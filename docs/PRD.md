@@ -1,8 +1,8 @@
 # Agent Forge — Product Requirements Document
 
-**Date**: 2026-02-25
+**Date**: 2026-02-27
 **Status**: Approved
-**Version**: 1.1.0
+**Version**: 1.2.0
 
 ## 1. Identity & Core Concept
 
@@ -50,6 +50,7 @@
 4. **Agent-agnostic**: A profile YAML defines how to start/resume/kill any agent.
 5. **Resilience**: If the forge process dies, agents continue in tmux. `forge attach` reconnects.
 6. **Brain + Body**: Profiles define the Body (how to run an agent), Specialists define the Brain (what an agent knows). Both are YAML, both are composable.
+7. **Universal deployment**: Configuration, not detection. A single `tmux.socket_path` setting (default: `~/.tmux/agent-forge`) works identically on WSL2, containers, and Linux servers — no OS branch logic.
 
 ---
 
@@ -82,9 +83,16 @@ detection:
   error_patterns:
     - "Error:"
     - "FATAL"
+  interaction_patterns:         # Agent is waiting for user input (blocked, not working)
+    - "\\[y/N\\]"
+    - "\\[Y/n\\]"
+    - "Press Enter to continue"
+    - "Enter passphrase"
   poll_interval_ms: 2000
+output_format: json           # json (--output-format stream-json) | text (raw pane capture)
 tmux:
   prefix: "af_"
+  socket_path: "~/.tmux/agent-forge"  # Universal: WSL2 /tmp is volatile; this path survives restarts
   pane_options:
     scrollback: 10000
 ```
@@ -162,8 +170,11 @@ detection:
 | `detection.ready_patterns` | Regex patterns indicating agent is idle/ready |
 | `detection.busy_patterns` | Regex patterns indicating agent is processing |
 | `detection.error_patterns` | Regex patterns indicating an error state |
+| `detection.interaction_patterns` | Regex patterns indicating agent awaits user input (`waiting_for_input` state) |
 | `detection.poll_interval_ms` | Status polling frequency |
+| `output_format` | `json` uses `--output-format stream-json` (structured, no escape codes); `text` uses raw `capture-pane` |
 | `tmux.prefix` | tmux session name prefix (default: `af_`) |
+| `tmux.socket_path` | tmux socket path — set outside `/tmp` for WSL2/container resilience |
 | `tmux.pane_options.scrollback` | Scrollback buffer size |
 
 ### Custom Profiles
@@ -188,36 +199,54 @@ created -> booting -> ready -> working -> idle -> (working -> idle)* -> complete
                                                                      -> error
                                                                      -> killed
                                    zombie <- (tmux session died unexpectedly)
+                                  stalled <- (no last_activity progress > threshold)
+                         waiting_for_input <- (interaction_pattern detected in pane)
 ```
 
 ### Session Store (SQLite)
 
 ```sql
 CREATE TABLE sessions (
-  id            TEXT PRIMARY KEY,      -- uuid
-  agent_id      TEXT NOT NULL,         -- "claude", "gemini", etc.
-  specialist_id TEXT,                  -- "mercury-db-health" (null if no specialist)
-  role          TEXT NOT NULL,         -- "boss", "worker"
-  tmux_session  TEXT NOT NULL,         -- "af_claude_abc123"
-  status        TEXT NOT NULL,         -- lifecycle state
-  task          TEXT,                  -- what was this agent asked to do
-  parent_id     TEXT,                  -- who spawned this agent (null for boss)
-  started_at    DATETIME,
-  updated_at    DATETIME,
-  ended_at      DATETIME,
-  exit_reason   TEXT,                  -- "completed", "killed", "error", "zombie"
-  log_file      TEXT                   -- path to output log
+  id               TEXT PRIMARY KEY,      -- uuid
+  agent_id         TEXT NOT NULL,         -- "claude", "gemini", etc.
+  specialist_id    TEXT,                  -- "mercury-db-health" (null if no specialist)
+  role             TEXT NOT NULL,         -- "boss", "worker"
+  tmux_session     TEXT NOT NULL,         -- "af_claude_abc123"
+  status           TEXT NOT NULL,         -- lifecycle state
+  task             TEXT,                  -- what was this agent asked to do
+  parent_id        TEXT,                  -- who spawned this agent (null for boss)
+  started_at       DATETIME,
+  updated_at       DATETIME,
+  ended_at         DATETIME,
+  last_activity    DATETIME,             -- updated by PostToolUse hook; used for stall detection
+  stalled_since    DATETIME,             -- set when progress stops; cleared on activity
+  escalation_level INTEGER DEFAULT 0,   -- 0=ok 1=nudged 2=needs-attention 3=terminate
+  exit_reason      TEXT,                 -- "completed", "killed", "error", "zombie"
+  log_file         TEXT                  -- path to output log
 );
 
 CREATE TABLE messages (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   from_session  TEXT NOT NULL,
   to_session    TEXT NOT NULL,
-  type          TEXT NOT NULL,         -- "task", "result", "status", "follow_up"
+  type          TEXT NOT NULL CHECK(type IN (
+                  -- Semantic: human-readable exchanges
+                  'task', 'result', 'status', 'follow_up',
+                  -- Protocol: trigger specific orchestrator behaviors
+                  'worker_done', 'spawn_request', 'escalation', 'health_check'
+                )),
   content       TEXT NOT NULL,
+  payload       TEXT,                  -- JSON structured data (artifact refs, AF_STATUS, exit codes)
+  priority      TEXT NOT NULL DEFAULT 'normal'
+                  CHECK(priority IN ('low', 'normal', 'high', 'urgent')),
+  thread_id     TEXT,                  -- groups related messages (e.g., a full protocol run)
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   read          BOOLEAN DEFAULT FALSE
 );
+
+CREATE INDEX idx_inbox    ON messages (to_session, read);
+CREATE INDEX idx_thread   ON messages (thread_id);
+CREATE INDEX idx_priority ON messages (priority, created_at);
 ```
 
 ### State Reconciliation
@@ -226,11 +255,30 @@ CREATE TABLE messages (
 2. **SQLite is truth for semantics** — assigned task, messages, parent/child relationships.
 3. **Reconciliation loop** (every 5s):
    ```
-   for each session in SQLite with status != completed/killed/error:
+   Phase 1 — Liveness check:
+   for each session with status not in (completed, killed, error, zombie):
      if tmux session does not exist:
-       mark as "zombie"
-       notify user
+       mark zombie, send escalation message to parent
+
+   Phase 2 — Progress check (working sessions only):
+   for each session with status = working:
+     threshold = specialist.stale_threshold_ms ?? 600_000  (default: 10 min)
+     if now - last_activity > threshold:
+       if stalled_since is null:
+         set stalled_since = now, escalation_level = 0
+       escalation_level += 1
+       if escalation_level == 1: tmux send-keys "" (gentle nudge)
+       if escalation_level >= 2: set status = stalled, notify parent session
+     else:
+       clear stalled_since, escalation_level = 0
+
+   Phase 3 — Interaction check:
+   for each session with status = working:
+     if pane content matches any interaction_pattern:
+       set status = waiting_for_input, notify user
    ```
+   Note: `last_activity` is updated by the Claude Code `PostToolUse` hook deployed per-session.
+   Agents without hook support (Gemini, Qwen) fall back to `updated_at` heuristic.
 
 ### Persistence & Resume
 
@@ -284,8 +332,11 @@ async function sendToAgent(sessionId: string, message: string): Promise<void> {
   // 1. Wait until agent is ready (not busy)
   await waitForReady(session, { timeout: 30_000 });
 
-  // 2. Send via tmux
-  tmux.sendKeys(session.tmux_session, message);
+  // 2. Send via tmux with post-send verification (pane-marker pattern, tmux 3.2+ safe)
+  await tmux.sendKeysVerified(session.tmux_session, message, {
+    maxRetries: 3,
+    retryDelayMs: 300,
+  });
 
   // 3. Log the message
   await store.addMessage({
@@ -338,6 +389,29 @@ async function waitForReady(
   throw new TimeoutError(session, opts.timeout);
 }
 ```
+
+### AF_STATUS Block Protocol
+
+Inspired by ralph-claude-code's `RALPH_STATUS` pattern. Worker agents emit a structured block at task completion, enabling the orchestrator to verify completion without regex-parsing pane content.
+
+Agents emit at the **end** of their response:
+
+```
+---AF_STATUS---
+STATUS: COMPLETE | IN_PROGRESS | BLOCKED
+EXIT_SIGNAL: true | false
+PROGRESS_SUMMARY: <one-line summary of what was accomplished>
+ARTIFACTS: <comma-separated outputs produced, or "none">
+BLOCKED_REASON: <if BLOCKED, reason>
+---AF_STATUS_END---
+```
+
+The orchestrator reads from the **log file** (not from `capture-pane`) to avoid scrollback truncation. Parsing order:
+1. Scan log file for `---AF_STATUS---` block (reliable, unbounded)
+2. Fall back to `ready_patterns` detection if block is absent
+3. If `output_format: json` — parse Claude's structured JSON stream directly
+
+**Injection**: `specialist-loader` automatically appends AF_STATUS format instructions to `prompt.system` when spawning a specialist. No user action required. Non-specialist spawns use a default prompt suffix.
 
 ### Read Protocol
 
@@ -393,6 +467,13 @@ turns:
       Design a solution for: ${task}
       Requirements: ${context}
     wait_for: ready
+    timeout_ms: 120000        # per-turn timeout; triggers on_error if exceeded
+    max_attempts: 2           # retry limit before failing the turn
+    on_blocked: skip          # if PreToolUse hook blocks: skip | abort | retry
+    on_error: abort           # if turn fails: abort protocol | skip turn | retry
+    done_criteria: |          # verifiable completion condition (checked against AF_STATUS)
+      STATUS: COMPLETE
+      output_var 'design' is non-empty
     capture_output: true
     output_var: design
 
@@ -917,6 +998,9 @@ agent-forge/
 |   |   +-- registry.ts             # Agent profile registry
 |   |   +-- protocol-engine.ts      # YAML protocol executor
 |   |   +-- specialist-loader.ts    # .specialist.yaml discovery, validation, rendering
+|   |   +-- watchdog.ts             # Reconciliation loop: liveness + progress + interaction (v0.6.0)
+|   |   +-- event-bridge.ts         # JSONL event emitter for observability (v0.6.0)
+|   |   +-- hook-deployer.ts        # Mode B: deploy Claude Code hooks to session dirs (v1.3.0)
 |   |
 |   +-- tmux/
 |   |   +-- manager.ts              # tmux session CRUD
@@ -1056,7 +1140,15 @@ v0.5.0 -- Advanced Protocols + Registry
   Registry CLI: unified view of all resources
 
 v0.6.0 -- Resilience & Polish
-  Reconciliation loop (zombie detection)
+  Zombie detection: reconciliation loop Phase 1 (tmux liveness)
+  Stalled-agent detection: Phase 2 (last_activity + PostToolUse hook integration)
+  waiting_for_input detection: Phase 3 (interaction_patterns in pane)
+  Progressive escalation: Level 1 nudge → Level 2 stalled state → parent notification
+  Circuit breaker: three-state (CLOSED/HALF_OPEN/OPEN) per protocol turn, git-diff based progress
+  AF_STATUS block: structured completion signal, auto-injected by specialist-loader
+  JSONL event bridge: structured session/message/protocol events (--json output flag)
+  Universal tmux socket path: configurable, defaults to ~/.tmux/agent-forge
+  Checkpoint file: .agent-forge/sessions/{id}/checkpoint.json for restart recovery
   attach/detach lifecycle
   Log management (rotation, cleanup)
   Profile test command
@@ -1082,10 +1174,16 @@ v1.2.0 -- Advanced TUI
   Protocol visualization (flow diagram)
 
 v1.3.0 -- Hooks & Events
-  Plugin system for lifecycle hooks
-  Pre/post-spawn hooks
-  Protocol completion hooks
-  Integration with Claude Code hooks
+  Hook taxonomy (8 official types + PostToolUseFailure):
+    SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
+    Stop, PreCompact, SessionEnd, Notification, PostToolUseFailure
+  Mode A (passive): Agent Forge reacts to Claude Code hook events → updates SQLite state
+  Mode B (active): Agent Forge deploys hook scripts into .claude/settings.json
+                   of each spawned session's directory (project-scoped, not user-scoped)
+  Hook configuration schema with matcher, timeout, blocking semantics
+  Pre/post-spawn hooks: fire before/after tmux session creation
+  Protocol completion hooks: fire on turn success/failure/timeout
+  on_blocked / on_error protocol turn fields (promoted from v0.6.0 prep)
 
 v1.4.0 -- Proactive Specialists
   Heartbeat system (scheduled specialist execution)
@@ -1093,12 +1191,48 @@ v1.4.0 -- Proactive Specialists
   Specialist-to-specialist communication (Inbox pattern)
   Continuous monitoring mode
 
-v2.0.0 -- Agent Marketplace & Ecosystem
-  Browse/install community protocols and specialists
-  Protocol composition (chain protocols)
-  Specialist marketplace (share domain-specific configs)
+v1.5.0 -- Autonomous Operations
+  Container mode: official Docker deployment with named volumes for state.db, logs, socket
+  Git-native change management:
+    - Cloned repo inside container, isolated from production
+    - Agents work on branches; propose changes via pull requests (gh pr create)
+    - wait_for: pr_merged | pr_closed turn type (human approval via PR review)
+    - Git permission Rules: agents can push branches, cannot merge to main, cannot force-push
+    - Git worktrees (moved from v2.0.0): parallel agents on same repo without conflicts
+  Event-driven triggers: on_external_event forge hook with HTTP/webhook receiver
+    (e.g., error rate > 5% → spawn incident protocol; CI failure → spawn troubleshoot)
+  Incidents table: detection, notification, and tracking for ALL problems — not just code fixes
+    CREATE TABLE incidents (
+      id           TEXT PRIMARY KEY,
+      title        TEXT NOT NULL,
+      status       TEXT CHECK(status IN (
+                     'open',             -- detected, not yet investigated
+                     'investigating',    -- agent is actively working on it
+                     'proposed',         -- PR opened (pr_url populated)
+                     'needs_manual',     -- no code fix; requires human action
+                     'auto_resolved',    -- resolved without intervention
+                     'closed'            -- resolved and confirmed
+                   )),
+      severity     TEXT CHECK(severity IN ('info','warning','critical')),
+      protocol_run TEXT,             -- which protocol run is handling this
+      thread_id    TEXT,             -- links to messages.thread_id
+      pr_url       TEXT,             -- nullable: only set if a code fix PR was opened
+      recurrence   INTEGER DEFAULT 0, -- how many times this pattern has appeared
+      created_at   DATETIME,
+      resolved_at  DATETIME
+    );
+    Note: most incidents never produce a PR. The PR is one resolution path,
+    not the default. Notifications, manual actions, and auto-resolutions are
+    equally valid outcomes.
+  Microservices mode: specialist-per-service pattern with shared incident bus
+
+v2.0.0 -- ForgeManager & Ecosystem
+  ForgeManager: browse/install community protocols, specialists, and profiles
+  Protocol composition (chain protocols into meta-workflows)
+  Specialist marketplace (community-shared domain configs)
   Multi-project support
   Skill-to-specialist migration CLI
+  Git worktree support (agent isolation for file-writing workers)
 ```
 
 ### Competitive Differentiation
@@ -1196,8 +1330,13 @@ specialist:
         path: .serena/memories/ssot_mercury_database_2026-02-05.md
     stale_threshold_days: 14
 
-  capabilities:                     # Optional: advanced features (future)
-    can_chat: true
+  capabilities:                     # Active: enforced by PreToolUse hook at session spawn
+    file_scope:                     # Filesystem access boundaries
+      - mercury/database/           # read/write allowed
+      - .agent-forge/sessions/      # read-only
+    blocked_tools:                  # Tools this specialist must not use
+      - Bash                        # read-only specialist, no shell execution
+    can_spawn: false                # Cannot spawn sub-agents (worker, not boss)
     tools:
       - name: docker_inspect
         purpose: "Check container runtime status"
@@ -1216,15 +1355,23 @@ agent-forge spawn gemini --specialist mercury-db-health "Check connection pools"
                 |                        |                        |
                 v                        v                        v
         commands.start_with_prompt    prompt.system          prompt.task_template
-        "gemini -p '${PROMPT}'"       + rendered with        $query = user task
-                                      task_template
+        "gemini -p '${PROMPT}'"       + AF_STATUS suffix     $query = user task
+                                      + rendered task_template
                 |                        |
                 +--------+---------------+
                          |
                          v
+              Write to session-scoped directory:
+              .agent-forge/sessions/{uuid}/.claude/CLAUDE.md
+              (contains: system prompt + AF_STATUS instructions)
+
               Final command:
-              gemini -p "[system prompt]\n\n[rendered task_template]"
+              gemini -p "[rendered task_template]"  (short, task-only)
+              --session-dir .agent-forge/sessions/{uuid}
               in tmux session af_gemini_<uuid>
+
+              CLAUDE.md survives session resume; CLI args do not.
+              For Claude: specialist prompt loaded via CLAUDE.md, not -p flag.
 ```
 
 ### Specialist Discovery (3-scope)
@@ -1263,6 +1410,18 @@ async function checkHealth(): Promise<HealthReport[]> {
   return reports;
 }
 ```
+
+### Rules, Skills, and Specialists — Three-Layer Knowledge
+
+Three distinct knowledge layers, from most general to most specific:
+
+| Layer | Type | Format | Loaded | Purpose |
+|-------|------|--------|--------|---------|
+| **Rules** | Always-on constraints | `.rules.md` | Every session | Behavioral guardrails ("Never commit credentials", "Always use parameterized queries") |
+| **Skills** | On-demand procedures | `SKILL.md` | When invoked | How to perform a specific workflow |
+| **Specialists** | Domain expert config | `.specialist.yaml` | When spawned | Full Brain layer: system prompt, task template, validation |
+
+Rules are prepended to every session's CLAUDE.md automatically. Skills are invoked explicitly. Specialists are loaded at spawn time. A rule cannot be overridden by a skill or specialist — it is the invariant layer.
 
 ### Skill-to-Specialist Promotion
 
@@ -1329,8 +1488,9 @@ This transforms specialists from passive (invoked on demand) to proactive (self-
 - Capabilities-based agent hierarchy (coordinator -> supervisor -> lead -> worker)
 - `sling` command for agent spawning with CLAUDE.md overlay
 
-**Adopted**: SQLite for state, reconciliation concept, TypeScript/Bun runtime.
-**Not adopted**: Git worktrees per agent, full hierarchy, mail system (tmux pipe instead), watchdog daemon (reconciliation loop instead).
+**Adopted (v1.0)**: SQLite for state, reconciliation concept, TypeScript/Bun runtime, CLAUDE.md overlay via session-scoped directory, typed messages table (CHECK constraint, payload JSON, priority, thread_id), stalled-agent detection (stalled_since + escalation_level).
+**Deferred to v2.0**: Git worktrees per agent (useful for file-writing workers in parallel; complexity cost deferred).
+**Not adopted**: Full capability hierarchy (boss/worker is sufficient for core use case), watchdog daemon (replaced by reconciliation loop Phases 1-3).
 
 ### Existing Skills (delegating + orchestrating-agents)
 - Pattern-based task routing (delegating/config.yaml)
