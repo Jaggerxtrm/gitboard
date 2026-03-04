@@ -14,3 +14,6 @@ deepwiki
 context7
 archive
 firecrawl
+
+# STANDARDIZZAZIONE CLI
+Usare PI! https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent

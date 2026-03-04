@@ -28,11 +28,11 @@
 |  LAYER 3: Orchestration                             |
 |  +- Protocol Engine  (workflow turn definitions)    |
 |  +- Routing Engine   (pattern -> agent/protocol)    |
-|  +- Message Bus      (tmux pipe + file log)         |
+|  +- Message Bus      (pi events + SQLite)            |
 |                                                     |
 |  LAYER 2: Execution                                 |
 |  +- Session Store    (who is running, state)        |
-|  +- tmux Manager     (session CRUD, capture, send)  |
+|  +- Pi Pool          (RpcClient per agent, JSON RPC)|
 |  +- af_claude, af_gemini, af_qwen, af_glm          |
 |                                                     |
 |  LAYER 1: Identity & Knowledge                      |
@@ -45,11 +45,11 @@
 ### Design Principles
 
 1. **Headless-first**: Every operation works via CLI. The TUI is a bonus.
-2. **tmux as infrastructure**: Don't reinvent the terminal — orchestrate it.
+2. **tmux as daemon host**: Forge runs as a daemon inside a tmux session; pi instances are child processes. If the terminal closes, the daemon continues.
 3. **Declarative protocols**: Workflows (collaborative, adversarial, etc.) are defined in YAML, not hardcoded.
-4. **Agent-agnostic**: A profile YAML defines how to start/resume/kill any agent.
-5. **Resilience**: If the forge process dies, agents continue in tmux. `forge attach` reconnects.
-6. **Brain + Body**: Profiles define the Body (how to run an agent), Specialists define the Brain (what an agent knows). Both are YAML, both are composable.
+4. **Agent-agnostic**: A profile YAML defines which pi provider to use for any agent.
+5. **Resilience**: If the forge process crashes, pi sessions are checkpointed in SQLite (`piSessionFile`). `forge attach` relaunches pi and recovers sessions via `switch_session`.
+6. **Brain + Body**: Profiles define the Body (which provider/model), Specialists define the Brain (what an agent knows). Both are YAML, both are composable.
 7. **Universal deployment**: Configuration, not detection. A single `tmux.socket_path` setting (default: `~/.tmux/agent-forge`) works identically on WSL2, containers, and Linux servers — no OS branch logic.
 
 ---
@@ -65,36 +65,8 @@ Every agent is defined by a profile. Built-in profiles for Claude, Gemini, Qwen,
 id: claude
 name: "Claude Code"
 role: boss                  # boss | worker | hybrid
-commands:
-  start: "claude --session-id ${SESSION_ID}"
-  start_with_prompt: "claude --session-id ${SESSION_ID} -p '${PROMPT}'"
-  resume: "claude --session-id ${SESSION_ID} --resume"
-  print_mode: "claude -p '${PROMPT}'"
-env:
-  CLAUDECODE: ""            # unset to avoid nested session guard
-detection:
-  ready_patterns:
-    - "^>"
-    - "\\$"
-  busy_patterns:
-    - "\\u280B|\\u2819|\\u2839|\\u2838"
-    - "Thinking"
-    - "Running"
-  error_patterns:
-    - "Error:"
-    - "FATAL"
-  interaction_patterns:         # Agent is waiting for user input (blocked, not working)
-    - "\\[y/N\\]"
-    - "\\[Y/n\\]"
-    - "Press Enter to continue"
-    - "Enter passphrase"
-  poll_interval_ms: 2000
-output_format: json           # json (--output-format stream-json) | text (raw pane capture)
-tmux:
-  prefix: "af_"
-  socket_path: "~/.tmux/agent-forge"  # Universal: WSL2 /tmp is volatile; this path survives restarts
-  pane_options:
-    scrollback: 10000
+provider: anthropic         # pi provider identifier
+model: claude-sonnet-4-6    # opzionale — usa default del provider se assente
 ```
 
 ```yaml
@@ -102,18 +74,8 @@ tmux:
 id: gemini
 name: "Gemini CLI"
 role: worker
-commands:
-  start: "gemini"
-  start_with_prompt: "gemini -p '${PROMPT}'"
-  resume: "gemini -r ${SESSION_REF} -p '${PROMPT}'"
-  print_mode: "gemini -p '${PROMPT}'"
-env: {}
-detection:
-  ready_patterns:
-    - "^>"
-  busy_patterns:
-    - "Generating"
-  poll_interval_ms: 3000
+provider: google-gemini-cli
+model: gemini-2.5-pro       # opzionale
 ```
 
 ```yaml
@@ -121,18 +83,8 @@ detection:
 id: qwen
 name: "Qwen CLI"
 role: worker
-commands:
-  start: "qwen"
-  start_with_prompt: "qwen '${PROMPT}'"
-  resume: "qwen -c '${PROMPT}'"
-  print_mode: "qwen '${PROMPT}'"
-env: {}
-detection:
-  ready_patterns:
-    - "^>"
-  busy_patterns:
-    - "Thinking"
-  poll_interval_ms: 3000
+provider: openai            # openai-compatible via DashScope
+model: qwen-coder-plus-latest
 ```
 
 ```yaml
@@ -140,20 +92,11 @@ detection:
 id: ccs-glm
 name: "CCS GLM-4"
 role: worker
-commands:
-  start: "env -u CLAUDECODE ccs glm"
-  start_with_prompt: "env -u CLAUDECODE ccs glm -p '${PROMPT}'"
-  resume: null              # GLM does not support resume
-  print_mode: "env -u CLAUDECODE ccs glm -p '${PROMPT}'"
-env:
-  CLAUDECODE: ""
-detection:
-  ready_patterns:
-    - "^>"
-  busy_patterns:
-    - "\\u280B|\\u2819|\\u2839|\\u2838"
-  poll_interval_ms: 2000
+provider: openai            # openai-compatible via GLM endpoint
+model: glm-4
 ```
+
+Le sezioni `commands.*`, `detection.*`, e `tmux.*` sono eliminate. Il comportamento (spawn, resume, polling, timeout) è gestito interamente da pi (`RpcClient`). La "readiness" è implicita: pi è sempre pronto a ricevere prompt dopo `start()`.
 
 ### Profile Fields
 
@@ -161,21 +104,11 @@ detection:
 |-------|-------------|
 | `id` | Unique identifier used in CLI commands |
 | `name` | Human-readable display name |
-| `role` | `boss` (one, orchestrator), `worker` (executes tasks), `hybrid` (both) |
-| `commands.start` | Launch agent without initial prompt |
-| `commands.start_with_prompt` | Launch agent with a task |
-| `commands.resume` | Resume a previous session (null if unsupported) |
-| `commands.print_mode` | Fire-and-forget execution (no persistent session) |
-| `env` | Environment variables to set/unset |
-| `detection.ready_patterns` | Regex patterns indicating agent is idle/ready |
-| `detection.busy_patterns` | Regex patterns indicating agent is processing |
-| `detection.error_patterns` | Regex patterns indicating an error state |
-| `detection.interaction_patterns` | Regex patterns indicating agent awaits user input (`waiting_for_input` state) |
-| `detection.poll_interval_ms` | Status polling frequency |
-| `output_format` | `json` uses `--output-format stream-json` (structured, no escape codes); `text` uses raw `capture-pane` |
-| `tmux.prefix` | tmux session name prefix (default: `af_`) |
-| `tmux.socket_path` | tmux socket path — set outside `/tmp` for WSL2/container resilience |
-| `tmux.pane_options.scrollback` | Scrollback buffer size |
+| `role` | `boss` (orchestrator), `worker` (executes tasks), `hybrid` (both) |
+| `provider` | Pi provider identifier (e.g. `anthropic`, `google-gemini-cli`, `openai`) |
+| `model` | Model ID opzionale — usa il default del provider se assente |
+
+I campi `commands.*`, `detection.*`, `env`, `output_format`, e `tmux.*` sono rimossi: la gestione del lifecycle dell'agente (spawn, resume, status, timeout, abort) è delegata interamente a `RpcClient` di pi.
 
 ### Custom Profiles
 
@@ -297,102 +230,80 @@ agent-forge sessions
 # ghi789     qwen     completed "validate commit security"  3m
 ```
 
+### Resilienza: Daemon-in-Tmux Pattern
+
+Forge gira come daemon dentro una sessione tmux dedicata. I processi pi sono child processes del daemon:
+
+```
+tmux session "af_daemon"
+└── agent-forge process (Bun)
+    ├── RpcClient [gemini]    pid 1234  ← child process
+    ├── RpcClient [qwen]      pid 1235  ← child process
+    └── RpcClient [claude]    pid 1236  ← child process
+```
+
+- Se l'utente fa `tmux detach`, forge e tutti i pi continuano
+- Se forge crasha, i pi muoiono — forge li rilancia al restart leggendo `piSessionFile` da SQLite
+- Al restart: `pi.start()` + `pi.send({ type: 'switch_session', sessionPath: checkpoint.piSessionFile })`
+
 ### Log Files
 
-Every session writes output to a log file:
+Every session writes output to a log file (audit trail):
 ```
 ~/.agent-forge/logs/
-+-- abc123-claude.log      # full terminal capture
++-- abc123-claude.log      # full terminal capture via pipe-pane
 +-- def456-gemini.log
 +-- ghi789-qwen.log
 ```
 
-Captured via `tmux pipe-pane` — continuous log of pane content, independent of the TS process.
+Catturati via `tmux pipe-pane` come audit trail. Non sono più il canale di lettura primario — l'output strutturato arriva via pi events e `get_last_assistant_text`.
 
 ---
 
 ## 4. Communication Protocol
 
-Three communication channels form the core of inter-agent communication.
+Inter-agent communication avviene tramite pi RPC (JSON stdin/stdout) e SQLite per coordinamento persistente.
 
 ### Channel Architecture
 
 | Channel | Mechanism | Purpose | Persistence |
 |---------|-----------|---------|-------------|
-| **Send** | `tmux send-keys` | Inject text into agent stdin | No (real-time) |
-| **Read** | `tmux capture-pane` | Read agent screen content | No (snapshot) |
-| **Log** | SQLite + file logs | Record all exchanges | Yes (persistent) |
+| **Send** | `pi.prompt()` (JSON RPC) | Invia prompt all'agente via stdin | No (real-time) |
+| **Read** | `pi.send({ type: 'get_last_assistant_text' })` | Legge l'ultimo output dell'agente | No (snapshot) |
+| **Events** | `pi.onEvent()` stream | Status in real-time (agent_start, tool_execution, agent_end) | No (streaming) |
+| **Log** | SQLite + pipe-pane JSONL | Registra tutti gli scambi | Sì (persistente) |
 
 ### Send Protocol
 
+Pi è sempre pronto a ricevere prompt dopo `start()` — nessun polling di readiness necessario.
+
 ```typescript
-async function sendToAgent(sessionId: string, message: string): Promise<void> {
-  const session = await store.getSession(sessionId);
+async function sendToAgent(session: Session, message: string): Promise<void> {
+  const pi = piPool.get(session.id);
 
-  // 1. Wait until agent is ready (not busy)
-  await waitForReady(session, { timeout: 30_000 });
+  // 1. Invia prompt (non-blocking — gli eventi arrivano in streaming via onEvent())
+  await pi.prompt(message);
 
-  // 2. Send via tmux with post-send verification (pane-marker pattern, tmux 3.2+ safe)
-  await tmux.sendKeysVerified(session.tmux_session, message, {
-    maxRetries: 3,
-    retryDelayMs: 300,
-  });
+  // 2. Aggiorna stato sessione
+  await db.updateSession(session.id, { status: 'working' });
 
-  // 3. Log the message
+  // 3. Log del messaggio
   await store.addMessage({
     from: currentSession.id,
-    to: sessionId,
-    type: "task",
+    to: session.id,
+    type: 'task',
     content: message,
   });
 
-  // 4. Update session status
-  await store.updateSession(sessionId, { status: "working" });
+  // Gli eventi pi aggiornano last_activity in tempo reale via onEvent()
 }
 ```
 
-### Wait-for-Ready
-
-Inspired by Agent Deck's 3-tier status detection:
-
-```typescript
-async function waitForReady(
-  session: Session,
-  opts: { timeout: number }
-): Promise<void> {
-  const profile = registry.getProfile(session.agent_id);
-  const deadline = Date.now() + opts.timeout;
-
-  while (Date.now() < deadline) {
-    const paneContent = tmux.capturePane(session.tmux_session);
-    const lastLines = paneContent.split("\n").slice(-5).join("\n");
-
-    if (
-      profile.detection.ready_patterns.some((p) =>
-        new RegExp(p).test(lastLines)
-      )
-    ) {
-      return; // Agent is ready
-    }
-
-    if (
-      profile.detection.error_patterns?.some((p) =>
-        new RegExp(p).test(lastLines)
-      )
-    ) {
-      throw new AgentError(session, "Agent in error state");
-    }
-
-    await sleep(profile.detection.poll_interval_ms);
-  }
-
-  throw new TimeoutError(session, opts.timeout);
-}
-```
+`waitForReady()` con polling + regex è eliminato. La "readiness" è implicita: un processo pi long-running è sempre pronto. Il watchdog registra il timestamp dell'ultimo evento ricevuto — se `now - lastEventTime > stall_threshold` l'agente è stalled.
 
 ### AF_STATUS Block Protocol
 
-Inspired by ralph-claude-code's `RALPH_STATUS` pattern. Worker agents emit a structured block at task completion, enabling the orchestrator to verify completion without regex-parsing pane content.
+Inspired by ralph-claude-code's `RALPH_STATUS` pattern. Worker agents emit a structured block at task completion.
 
 Agents emit at the **end** of their response:
 
@@ -406,33 +317,28 @@ BLOCKED_REASON: <if BLOCKED, reason>
 ---AF_STATUS_END---
 ```
 
-The orchestrator reads from the **log file** (not from `capture-pane`) to avoid scrollback truncation. Parsing order:
-1. Scan log file for `---AF_STATUS---` block (reliable, unbounded)
-2. Fall back to `ready_patterns` detection if block is absent
-3. If `output_format: json` — parse Claude's structured JSON stream directly
+Con pi, il segnale primario di completamento è l'evento `agent_end`. L'orchestratore legge l'output via `get_last_assistant_text` (non da file di log). AF_STATUS rimane rilevante per **compatibilità con sistemi senza pi** (es. unitAI che legge da stdout CLI).
 
-**Injection**: `specialist-loader` automatically appends AF_STATUS format instructions to `prompt.system` when spawning a specialist. No user action required. Non-specialist spawns use a default prompt suffix.
+> **Contratto condiviso:** Il formato AF_STATUS è identico in tutti i sistemi dell'ecosistema (unitAI, Agent Forge, Mercury). **Non va modificato unilateralmente**: qualsiasi cambiamento richiede consenso di tutti i sistemi. La logica di parsing sarà parte del pacchetto condiviso `@jaggerxtrm/specialist-loader`. Agent Forge legge AF_STATUS via `get_last_assistant_text`; unitAI lo legge da stdout del CLI — il formato è lo stesso, solo la sorgente cambia.
+
+Parsing order con pi:
+1. Attendi evento `agent_end` — segnale nativo di completamento
+2. Leggi output via `pi.send({ type: 'get_last_assistant_text' })`
+3. Parsa AF_STATUS block se presente (compatibilità cross-sistema)
+
+**Injection**: `specialist-loader` appende automaticamente le istruzioni AF_STATUS a `prompt.system` al momento dello spawn. Nessuna azione manuale richiesta.
 
 ### Read Protocol
 
 ```typescript
-async function readFromAgent(
-  sessionId: string,
-  opts?: { tail?: number }
-): Promise<string> {
-  const session = await store.getSession(sessionId);
-
-  // Option A: Real-time (last N lines from pane)
-  if (opts?.tail) {
-    return tmux.capturePane(session.tmux_session, {
-      lastLines: opts.tail,
-    });
-  }
-
-  // Option B: Full log (from file)
-  return fs.readFile(session.log_file, "utf-8");
+async function readFromAgent(session: Session): Promise<string> {
+  const pi = piPool.get(session.id);
+  const { data } = await pi.send({ type: 'get_last_assistant_text' });
+  return data.text;
 }
 ```
+
+Per audit trail completo, `pipe-pane` continua a scrivere su file log — ma non è più usato come canale di lettura primario.
 
 ---
 
@@ -689,6 +595,26 @@ result:
     ${verdict}
 ```
 
+### Turn Execution (Pi-based)
+
+Il Protocol Engine esegue ogni turn via pi RPC. `wait_for: ready` nei YAML di protocollo si traduce in `waitForIdle()`:
+
+```typescript
+// Per ogni turn del protocollo:
+const rendered_prompt = renderTemplate(turn.prompt_template, context);
+
+await pi.prompt(rendered_prompt);
+await pi.waitForIdle(turn.timeout_ms ?? 120_000);
+
+const { data } = await pi.send({ type: 'get_last_assistant_text' });
+context[turn.output_var] = data.text;  // disponibile ai turn successivi
+```
+
+Vantaggi rispetto al vecchio pattern tmux:
+- Nessun polling di pane content — `waitForIdle()` attende `agent_end` event nativo
+- Timeout preciso per-turn (non per sessione)
+- Cancellazione immediata via `pi.send({ type: 'abort' })` in caso di `on_error: abort`
+
 ### Routing Engine
 
 Migrated from `delegating/config.yaml`:
@@ -933,8 +859,8 @@ Each resource shows its frontmatter metadata (name, version, description, catego
 
 | Panel | Content | Update mechanism |
 |-------|---------|------------------|
-| **Fleet** | Agent list with status, duration, role, specialist | Poll every 2-5s (detection patterns) |
-| **Active Agent** | Output tail of selected agent | tmux capture-pane streaming |
+| **Fleet** | Agent list with status, duration, role, specialist | SQLite poll ogni 2-5s (aggiornato da pi events) |
+| **Active Agent** | Output tail of selected agent | pi `message_update` events (streaming delta) |
 | **Messages** | Inter-agent message log | SQLite messages table |
 | **Protocol** | Running protocol state (completed/in-progress turns) | Orchestrator state |
 | **Registry** | All specialists, protocols, profiles, skills with details | File scan on open + manual refresh |
@@ -1002,11 +928,10 @@ agent-forge/
 |   |   +-- event-bridge.ts         # JSONL event emitter for observability (v0.6.0)
 |   |   +-- hook-deployer.ts        # Mode B: deploy Claude Code hooks to session dirs (v1.3.0)
 |   |
-|   +-- tmux/
-|   |   +-- manager.ts              # tmux session CRUD
-|   |   +-- detector.ts             # Status detection (pane content)
-|   |   +-- capture.ts              # capture-pane + pipe-pane
-|   |   +-- layout.ts               # Layout presets
+|   +-- pi/
+|   |   +-- rpc-pool.ts             # gestisce N istanze RpcClient (una per agente)
+|   |   +-- event-router.ts         # routing AgentEvent → SQLite (last_activity, status)
+|   |   +-- layout.ts               # Layout presets tmux (per daemon host)
 |   |
 |   +-- tui/
 |   |   +-- app.tsx                 # Ink root component
@@ -1061,9 +986,14 @@ agent-forge/
 ### Distribution
 
 ```bash
-# Install via npm/bun
+# Install via npm (Node-compatible bundle, Bun not required on user machines)
 npm install -g agent-forge
+
+# Install via bun (native, faster startup)
 bun install -g agent-forge
+
+# Build (bun build --target=node produces Node-compatible bundle for npm publish)
+bun build --target=node src/index.ts --outfile dist/agent-forge.js
 
 # Prerequisite
 # Linux: apt install tmux / dnf install tmux
@@ -1095,11 +1025,12 @@ bun install -g agent-forge
 |---------|---------|
 | `commander` | CLI framework |
 | `ink` + `ink-*` | TUI components |
-| `better-sqlite3` | SQLite (sync, fast) |
+| `bun:sqlite` | SQLite (native Bun driver, zero native compilation) |
 | `yaml` | Profile/protocol parsing |
 | `zod` | Schema validation |
 | `chalk` | Terminal colors (CLI output) |
 | `chokidar` | File watching (log tailing) |
+| `vitest` | Test framework (Bun-compatible) |
 
 ---
 
@@ -1184,6 +1115,21 @@ v1.3.0 -- Hooks & Events
   Pre/post-spawn hooks: fire before/after tmux session creation
   Protocol completion hooks: fire on turn success/failure/timeout
   on_blocked / on_error protocol turn fields (promoted from v0.6.0 prep)
+
+v1.3.x -- SQLite-First Communication (annotato per v1.3.0+)
+  Principio architetturale: tmux = execution layer, SQLite = communication layer
+  Obiettivo: gli agenti non comunicano mai leggendo il terminale dell'altro.
+  Tutta la comunicazione strutturata passa per SQLite.
+  Mezzo: Local Communication MCP server (wrappa state.db come typed tools):
+    send_message({ to, type, content, payload?, priority? })
+    read_inbox({ session_id, unread_only?, type_filter? })
+    update_status({ session_id, status, last_activity? })
+    report_completion({ session_id, af_status, artifacts? })
+    get_task({ session_id })
+  Hook nativi di ogni CLI (Claude Code hook → update last_activity, Stop hook → write worker_done)
+  capture-pane demosso a tool di debug/backup; pipe-pane resta come audit trail
+  Prerequisito: studio degli hook di ciascun CLI agent
+    (Claude Code: 8 tipi documentati; Gemini/Qwen/GLM: da investigare)
 
 v1.4.0 -- Proactive Specialists
   Heartbeat system (scheduled specialist execution)
@@ -1294,6 +1240,7 @@ specialist:
     author: jagger
 
   execution:
+    mode: auto                      # tool | skill | auto (default: auto)
     preferred_profile: gemini       # Which Agent Forge profile to use
     model: gemini-2.0-flash         # Model override (informational for non-API agents)
     temperature: 0.2
@@ -1354,38 +1301,51 @@ agent-forge spawn gemini --specialist mercury-db-health "Check connection pools"
         gemini.yaml         mercury-db-health.yaml
                 |                        |                        |
                 v                        v                        v
-        commands.start_with_prompt    prompt.system          prompt.task_template
-        "gemini -p '${PROMPT}'"       + AF_STATUS suffix     $query = user task
-                                      + rendered task_template
+        provider: google-gemini-cli   prompt.system          prompt.task_template
+                                      + AF_STATUS suffix     $query = user task
                 |                        |
                 +--------+---------------+
                          |
                          v
-              Write to session-scoped directory:
-              .agent-forge/sessions/{uuid}/.claude/CLAUDE.md
-              (contains: system prompt + AF_STATUS instructions)
+              Crea sessionDir: .agent-forge/sessions/{uuid}/
+              Scrive agents.md (convenzione nativa di pi):
+                .agent-forge/sessions/{uuid}/agents.md
+                (contiene: system prompt dello specialist + istruzioni AF_STATUS)
 
-              Final command:
-              gemini -p "[rendered task_template]"  (short, task-only)
-              --session-dir .agent-forge/sessions/{uuid}
-              in tmux session af_gemini_<uuid>
+              Spawn RpcClient:
+                new RpcClient({ provider: 'google-gemini-cli', cwd: sessionDir })
+                → pi carica agents.md automaticamente dalla cwd
 
-              CLAUDE.md survives session resume; CLI args do not.
-              For Claude: specialist prompt loaded via CLAUDE.md, not -p flag.
+              Invia task:
+                await pi.prompt(renderTaskTemplate(specialist, userTask))
 ```
 
-### Specialist Discovery (3-scope)
+`agents.md` è la convenzione nativa di pi per il context injection — equivalente a `CLAUDE.md` ma funziona con tutti i provider (non solo Claude). Persiste per tutta la sessione pi senza re-iniezione.
+
+### Specialist Discovery (3-scope + cross-scanning)
 
 ```
 Priority (highest first):
 1. Project:  .agent-forge/specialists/*.specialist.yaml
+             .claude/specialists/*.specialist.yaml        ← cross-scanning
 2. User:     ~/.agent-forge/specialists/*.specialist.yaml
+             ~/.claude/specialists/*.specialist.yaml      ← cross-scanning
 3. System:   <agent-forge-install>/specialists/*.specialist.yaml
 
 Merge rule: Project overrides User overrides System (by metadata.name)
 ```
 
+**Cross-scanning:** Agent Forge scansiona anche `.claude/specialists/` (e `~/.claude/specialists/` a livello utente) se presenti. Questo garantisce che uno specialist creato per unitAI (che scansiona `.claude/specialists/`) funzioni anche in Agent Forge senza duplicazione del file. Viceversa, uno specialist in `.agent-forge/specialists/` viene trovato anche da unitAI.
+
+**Policy "never reject unknown fields":** Il loader YAML accetta tutti i campi del superset schema senza errore, anche quelli non usati da Agent Forge (es. `prompt.normalize_template` di Mercury, `communication.*` di unitAI). Questo garantisce che uno specialist scritto per un sistema qualsiasi funzioni in tutti gli altri. Zod è l'implementazione autoritativa: se una divergenza emerge tra Zod e Pydantic, è Pydantic ad adattarsi.
+
 ### Staleness Detection
+
+L'algoritmo è identico in tutti i sistemi dell'ecosistema (Agent Forge, unitAI, Mercury):
+
+1. Controlla se i file in `validation.files_to_watch` hanno `mtime > metadata.updated`
+2. Controlla se giorni da ultimo update > `validation.stale_threshold_days`
+3. Stato risultante: **OK** / **STALE** (file cambiati) / **AGED** (threshold superata)
 
 ```typescript
 async function checkHealth(): Promise<HealthReport[]> {
@@ -1411,6 +1371,18 @@ async function checkHealth(): Promise<HealthReport[]> {
 }
 ```
 
+### Circuit Breaker (3 stati)
+
+Agent Forge implementa un circuit breaker a **3 stati** per ogni backend/specialist. Il modello è condiviso con unitAI e Mercury (interfaccia identica; Agent Forge aggiunge l'estensione git-diff):
+
+| Stato | Comportamento | Transizione |
+|-------|---------------|-------------|
+| **CLOSED** | Operazione normale. Traccia fallimenti consecutivi. | → OPEN dopo N fallimenti consecutivi (default: 3) |
+| **OPEN** | Tutte le richieste falliscono immediatamente. Usa fallback. | → HALF_OPEN dopo cooldown (default: 60s) |
+| **HALF_OPEN** | Permette una richiesta di prova. | Successo → CLOSED; Fallimento → OPEN |
+
+**Estensione Agent Forge (git-diff progress):** se N cicli consecutivi non producono file modificati, artifact nuovi, o commit Git, il circuit si apre. Questo previene loop infiniti su agenti bloccati. Questa estensione è Forge-specifica e **non va portata in unitAI o Mercury**.
+
 ### Rules, Skills, and Specialists — Three-Layer Knowledge
 
 Three distinct knowledge layers, from most general to most specific:
@@ -1435,6 +1407,32 @@ agent-forge specialist create --from-skill delegating
 # User fills in: execution config, prompt templates, validation rules
 ```
 
+### Future: Shared Package `@jaggerxtrm/specialist-loader`
+
+Una volta che Agent Forge e unitAI stabilizzano le loro implementazioni del specialist loader, la logica condivisa sarà estratta nel pacchetto npm `@jaggerxtrm/specialist-loader`. Contenuto pianificato:
+
+- Zod schema definitions (superset)
+- Discovery logic (3-scope, cross-scanning `.claude/` + `.agent-forge/`)
+- Template engine (`$variable` substitution)
+- AF_STATUS parser (identico in tutti i sistemi)
+- Output validator (JSON Schema)
+- Staleness detector (`files_to_watch` + threshold)
+- Specialist lifecycle hook emitter
+
+Entrambi Agent Forge e unitAI dipenderanno da questo pacchetto. Timeline: dopo la stabilizzazione di Agent Forge v0.4.0 e unitAI v2.0. Poiché entrambi usano Bun/TS, l'estrazione è diretta senza problemi di compatibilità runtime.
+
+### Execution Mode
+
+Il campo `execution.mode` determina come lo specialist viene usato a runtime:
+
+| Valore | Comportamento |
+|--------|---------------|
+| `skill` | Il `prompt.system` dello specialist viene scritto in `agents.md` prima dello spawn. Nessuna chiamata backend aggiuntiva. Lo specialist agisce come domain knowledge persistente. |
+| `tool` | Lo specialist è invocato come operazione discreta (CLI call o MCP call). Attende la risposta, valida l'output. |
+| `auto` | Il sistema decide: se sessione interattiva (pi RPC) → skill mode; se invocazione programmatica (MCP) → tool mode. **Raccomandato come default.** |
+
+Agent Forge già implementa implicitamente il *skill mode* quando scrive il system prompt dello specialist in `agents.md` al momento dello spawn. Il campo `execution.mode: skill` lo documenta esplicitamente.
+
 ### Compatibility with Python Implementation
 
 The existing Python `SpecialistLoader` (Pydantic) and the new TypeScript loader (Zod) read the same `.specialist.yaml` format. This means:
@@ -1442,6 +1440,21 @@ The existing Python `SpecialistLoader` (Pydantic) and the new TypeScript loader 
 - Specialists created for Mercury Docker services (Python) work in Agent Forge (TS)
 - Specialists created via Agent Forge CLI work in Docker containers (Python)
 - The `.specialist.yaml` format is the shared contract — language-agnostic
+- **Zod è l'implementazione autoritativa**: in caso di divergenza Zod/Pydantic, Pydantic si adatta
+
+### Ruolo di MCP nell'Architettura
+
+MCP è l'interfaccia con cui il **boss** (Claude o un orchestratore esterno) delega lavoro agli specialist. **Non è un canale di comunicazione inter-agente.**
+
+| Contesto | Ruolo di MCP |
+|----------|--------------|
+| unitAI | Boss invoca `use_specialist` via MCP → specialist risponde |
+| Agent Forge | Boss usa Bash tool per invocare `agent-forge spawn --specialist` |
+| Mercury | Supervisor spawna la strategy suite tramite Agent Forge (non MCP) |
+
+Il Specialist System è **indipendente da MCP**: funziona identicamente come MCP tool (unitAI), CLI command (Agent Forge), import Python (darth_feedor), o context injection (skill mode). Il campo `execution.mode: auto` permette allo stesso specialist di funzionare come tool call o skill injection a seconda del contesto.
+
+Per orchestrazione agent-to-agent, i pattern preferiti sono: CLI subprocesses (`agent-forge spawn`), file-based communication, e SQLite mail — non MCP. MCP aggiunge overhead senza dare valore rispetto a metodi più diretti per la comunicazione inter-agente.
 
 ### Future: Continuous Specialist (Heartbeat)
 
@@ -1466,7 +1479,86 @@ This transforms specialists from passive (invoked on demand) to proactive (self-
 
 ---
 
-## 11. Research & Inspiration
+## 11. Specialist Lifecycle Hooks & Cost Tracking
+
+Ogni invocazione di specialist passa attraverso 4 hook points che tracciano il ciclo completo dalla richiesta alla risposta. Il sistema fornisce observability completa, cost tracking, e audit trail.
+
+### 11.1 Hook Points
+
+| Hook | Fires When | Key Payload Fields |
+|------|------------|--------------------|
+| `pre_render` | Specialist caricato da cache, variabili template risolte | specialist_name, version, variables (keys only), backend_resolved, circuit_breaker_state |
+| `post_render` | Prompt completamente renderizzato, pronto per esecuzione | prompt_hash (SHA-256), prompt_length_chars, estimated_tokens, af_status_appended |
+| `pre_execute` | Prompt inviato al backend pi/RPC | backend, model, temperature, max_tokens, timeout_ms, permission_level |
+| `post_execute` | Risposta ricevuta e validata | status (AF_STATUS), duration_ms, tokens_in, tokens_out, cost_usd, error? |
+
+Tutti e 4 gli hook di una singola invocazione condividono lo stesso `invocation_id` (UUID) per correlazione. Gli hook handlers sono **fire-and-forget** — non bloccano la pipeline di esecuzione.
+
+### 11.2 SQLite Schema — specialist_events
+
+```sql
+CREATE TABLE specialist_events (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  invocation_id   TEXT NOT NULL,
+  hook            TEXT NOT NULL CHECK(hook IN (
+    'pre_render','post_render','pre_execute','post_execute')),
+  timestamp       DATETIME NOT NULL,
+  specialist_name TEXT NOT NULL,
+  specialist_version TEXT,
+  session_id      TEXT,          -- links to sessions table
+  thread_id       TEXT,          -- links to messages.thread_id
+  payload         TEXT NOT NULL,  -- Full event JSON
+  -- Denormalized for fast queries (evitano il parsing del JSON payload):
+  backend         TEXT,
+  duration_ms     INTEGER,
+  tokens_in       INTEGER,
+  tokens_out      INTEGER,
+  cost_usd        REAL,
+  status          TEXT,
+  error_type      TEXT
+);
+
+CREATE INDEX idx_events_invocation ON specialist_events(invocation_id);
+CREATE INDEX idx_events_specialist ON specialist_events(specialist_name, timestamp);
+CREATE INDEX idx_events_session    ON specialist_events(session_id);
+```
+
+Mirror JSONL: ogni evento viene anche appeso a `.agent-forge/trace.jsonl` per debugging con `jq`/`tail -f`.
+
+### 11.3 Cost Tracking — Pricing Table
+
+Ogni evento `post_execute` calcola un `cost_estimate` basato su token counts e pricing table configurabile:
+
+```typescript
+const MODEL_PRICING = {
+  'glm-4':           { input: 0.05,  output: 0.10  },  // $/MTok
+  'gemini-2.5-lite': { input: 0.075, output: 0.15  },
+  'haiku':           { input: 0.40,  output: 2.00  },
+  'gemini-pro':      { input: 1.25,  output: 5.00  },
+  'sonnet':          { input: 3.00,  output: 15.00 },
+  'opus':            { input: 15.00, output: 75.00 },
+};
+```
+
+Query di esempio — costo per specialist nelle ultime 24h:
+
+```sql
+SELECT specialist_name,
+       SUM(cost_usd)      AS total_cost,
+       COUNT(*)           AS invocations,
+       AVG(duration_ms)   AS avg_latency_ms
+FROM specialist_events
+WHERE hook = 'post_execute'
+  AND timestamp > datetime('now', '-24 hours')
+GROUP BY specialist_name
+ORDER BY total_cost DESC;
+```
+
+La pricing table è allineata con la cost hierarchy di Mercury Terminal (GLM $0.05 → Opus $15/MTok). I dati `specialist_events` sono la fonte condivisa per il cost-aware model selection dell'ecosistema.
+
+---
+
+## 12. Research & Inspiration
 
 ### Agent Deck (asheshgoplani/agent-deck)
 - Go + Bubble Tea TUI

@@ -7,7 +7,11 @@ Il sistema Mercury è organizzato in tre layer sovrapposti, ognuno con responsab
 **Layer 1 — Agent Forge** (infrastruttura): gestisce sessioni tmux, comunicazione inter-agente, lifecycle degli agenti, persistenza delle sessioni in SQLite (`~/.agent-forge/state.db`), protocolli YAML dichiarativi, e il sistema Brain+Body (Profile = come eseguire, Specialist = cosa sa). Tutti gli agenti Mercury sono Agent Forge specialists.
 **Layer 2 — Mercury Workflow** (questo documento): definisce il cognitive loop del front-agent, la memoria a due livelli (SQLite `mercury.db`), il sistema di hook per l'iniezione del contesto, i background worker, e la strategy suite. Interagisce con Agent Forge per spawnare agenti specializzati.
 **Layer 3 — Mercury Terminal** (interfaccia): il wrapper Bun/TypeScript che al lancio mostra la splash screen, gestisce la navigazione tra sessioni parallele, le visualizzazioni di mercato, e la status bar tmux. Descritto in [[interfaccia-sistema-dump]].
-I due database coesistono con responsabilità separate: `agent-forge/state.db` è la fonte di verità per liveness e parentela delle sessioni; `mercury.db` è la fonte di verità per il contesto cognitivo, la memoria compressa, gli artifacts e le preferenze utente. Nessuno dei due deve sostituire l'altro.
+I due database coesistono con responsabilità **completamente separate**:
+- `~/.agent-forge/state.db` — fonte di verità per liveness, parentela sessioni, message bus inter-agente. **Scritto esclusivamente da Agent Forge.** Mercury non scrive mai in `state.db` direttamente — interagisce con esso solo tramite l'API di Agent Forge (spawn, message, status update).
+- `mercury.db` — fonte di verità per contesto cognitivo, memoria compressa, artifacts, preferenze utente. **Scritto esclusivamente da Mercury** tramite `mercury-local` MCP server.
+
+La correlazione tra i due DB avviene via `task_ref` (UUID condiviso). Nessuno dei due deve sostituire l'altro.
 **Perimetro del sistema:** Mercury Terminal AI gestisce contesto cognitivo, analisi, e workflow agentici. Non esegue ordini di mercato. L'esecuzione fisica avviene nel layer separato C++ Core + Rithmic API (TUI Orchestrator Rust/Ratatui, GUI Qt), su cui Mercury AI non ha accesso diretto. Il sistema AI ragiona *sopra* il dato di mercato, non dentro il flusso di esecuzione.
 > **Risolto (v1.2):** Il Researcher scrive direttamente in `mercury.db` tramite `mercury-local` MCP server. Il Supervisor riceve un messaggio `worker_done` nel message bus di Agent Forge con `payload` JSON contenente `artifact_ids: [uuid]` — un riferimento, non il contenuto. Il Supervisor interroga `mercury-local` solo se deve sintetizzare. Il contenuto pesante viaggia in `mercury.db`; il coordinamento viaggia nel message bus di Agent Forge (`state.db`). La correlazione tra i due DB avviene via `task_ref` (uuid condiviso generato dal Supervisor al momento dello spawn, incluso nel `payload` di ogni messaggio Agent Forge e salvato come campo `task_ref` in ogni artifact Mercury correlato).
 ---
@@ -26,15 +30,17 @@ Il Launcher `@mercury/cli` esegue una serie di check bloccanti in sequenza prima
 **Verifica `mercury.db`:** se assente, inizializza lo schema. Le tabelle sono: `daily_sessions`, `intel_artifacts`, `launchEvents_logs`, `session_observations`, `session_summaries`, `session_updates_log`, `user_preferences`, `system_state`.
 **Statusline:** il Launcher modifica direttamente il file di configurazione statusline di Claude Code. Solo dopo il completamento di tutti i check scrive `health_status='OK'` in `system_state`.
 **Selezione modello per fase:** il sistema adotta una strategia cost-aware per la selezione del modello durante ogni fase operativa. Per esplorazione e check rapidi si usa Haiku. Per analisi di sessione e compressione si usa Gemini Flash o Haiku. Per generazione analisi profonde e strategy workflow si usa Sonnet o Gemini Pro. Opus è riservato a ragionamento profondo su richiesta esplicita. Questa gerarchia va resa esplicita in `user_preferences` e rispettata da tutti i worker.
-| Modello | Costo/MTok (input) | Caso d'uso Mercury |
-|---|---|---|
-| GLM-4.7 | $0.05 | Pre-screening observations ad alto volume, filtri rapidi |
-| Gemini 2.5-lite | $0.075 | Memory Compressor batch async, sommari background |
-| Claude Haiku | $0.40 | Health check, importance scoring, comandi slash veloci |
-| Gemini Pro | ~$1.25 | ETL semantico overnight, deep-dive qualitativo |
-| Claude Sonnet | ~$3 | Analisi profonde, strategy workflow, sintesi Supervisor |
-| Claude Opus | ~$15 | Ragionamento profondo su richiesta esplicita (raro) |
-**Limiti MCP attivi:** per preservare la finestra di contesto, il sistema deve mantenere meno di 10 MCP attivi per sessione (soglia empirica: oltre 10 MCP attivi la finestra effettiva si riduce significativamente da 200k). La configurazione MCP per il front-agent e per ciascun agente della strategy suite deve essere dichiarata esplicitamente nel rispettivo `.specialist.yaml`.
+| Modello | Input $/MTok | Output $/MTok | Caso d'uso Mercury |
+|---|---|---|---|
+| GLM-4 | $0.05 | $0.10 | Pre-screening observations ad alto volume, filtri rapidi |
+| Gemini 2.5-lite | $0.075 | $0.15 | Memory Compressor batch async, sommari background |
+| Claude Haiku | $0.40 | $2.00 | Health check, importance scoring, comandi slash veloci |
+| Gemini Pro | $1.25 | $5.00 | ETL semantico overnight, deep-dive qualitativo |
+| Claude Sonnet | $3.00 | $15.00 | Analisi profonde, strategy workflow, sintesi Supervisor |
+| Claude Opus | $15.00 | $75.00 | Ragionamento profondo su richiesta esplicita (raro) |
+
+_Pricing allineata con `MODEL_PRICING` condivisa dell'ecosistema (Agent Forge PRD §11.3). In caso di aggiornamento prezzi, la fonte autoritativa è la shared table — questo documento si adatta._
+**Limiti MCP attivi (policy Mercury-only):** per preservare la finestra di contesto, Mercury mantiene meno di **10 MCP attivi per sessione** (soglia empirica: oltre 10 MCP attivi la finestra effettiva si riduce significativamente da 200k). Questa è una policy specifica di Mercury Terminal — Agent Forge e unitAI non impongono questo limite. La configurazione MCP per il front-agent e per ciascun agente della strategy suite deve essere dichiarata esplicitamente nel rispettivo `.specialist.yaml`.
 > **Aperto:** Come si gestisce il fallimento parziale degli health check? Se `darth_feedor` non risponde ma tutti gli altri check passano, si avvia in modalità degradata (senza news feed) o si blocca? La policy di degradazione graceful non è ancora definita per nessun componente.
 ---
 
@@ -91,7 +97,7 @@ Ogni agente spawnato (worker) riceve un **contesto fresco** di 200k token. Quest
 ## 2.0.1 Background Operations — Active Workers
 
 Oltre al front-agent, il sistema si basa su worker headless che garantiscono reattività e aggiornamento dati senza bloccare l'UX.
-**`mercury-worker` (Memory Compressor):** processo Node.js principale per la gestione asincrona degli hook. Usa `gemini-2.5-lite` per valutare l'importanza degli eventi e comprimere le osservazioni in summaries. Gestisce l'injection automatica nel `summary_so_far`. Il worker implementa un **circuit breaker** a tre stati: CLOSED (operazione normale con tracking progressi), HALF_OPEN (monitoraggio del recupero), OPEN (esecuzione bloccata, richiede intervento manuale). Il circuito si apre se per N cicli consecutivi (default: 3) non viene rilevato alcun progresso — nessun artifact nuovo, nessun summary aggiornato — o se lo stesso errore si ripete per M cicli (default: 5).
+**`mercury-worker` (Memory Compressor):** processo Bun/TS principale per la gestione asincrona degli hook. Usa `gemini-2.5-lite` per valutare l'importanza degli eventi e comprimere le osservazioni in summaries. Gestisce l'injection automatica nel `summary_so_far`. Il worker implementa un **circuit breaker** a tre stati: CLOSED (operazione normale con tracking progressi), HALF_OPEN (monitoraggio del recupero), OPEN (esecuzione bloccata, richiede intervento manuale). Il circuito si apre se per N cicli consecutivi (default: 3) non viene rilevato alcun progresso — nessun artifact nuovo, nessun summary aggiornato — o se lo stesso errore si ripete per M cicli (default: 5).
 **`mercury-local` (Local MCP Server):** interfaccia sicura verso `mercury.db`. Gestisce tutte le letture/scritture strutturate.
 **`darth_feedor-watcher` (Intel Monitor — Planned):** worker leggero per il polling continuo di `darth_feedor.articles`. Obiettivo: aggiornare `intel_artifacts` in real-time se arrivano news critiche, notificando l'agente via hook. Questo componente è attualmente il punto più critico non implementato: senza di lui il sistema è reattivo solo su richiesta esplicita, non proattivo come descritto nella sezione 2.2.
 **API HTTP del Worker Service:** `mercury-worker` espone un server HTTP su `http://127.0.0.1:37000`. Endpoints:
@@ -172,7 +178,17 @@ Gli agenti worker non possono essere lasciati liberi di organizzarsi autonomamen
 ## 3.0 Visione: Office of Agents
 
 La strategy suite implementa la visione dell'"ufficio di agenti continuo" — un set di specialist che lavorano in parallelo o sequenzialmente su richiesta dell'utente o autonomamente, ognuno con il proprio dominio di competenza, connessi tramite Agent Forge e `mercury.db`.
-Gli agenti della strategy suite sono Agent Forge specialists definiti in `.specialist.yaml`. Il loro specialist YAML definisce: il system prompt specifico per dominio, il template del task con output atteso strutturato, il modello preferito, i MCP abilitati, e le condizioni di staleness. Tutti condividono l'accesso a `mercury.db` tramite `mercury-local` MCP, ma ognuno ha permessi di tool limitati al proprio dominio.
+Gli agenti della strategy suite sono Agent Forge specialists definiti in `.specialist.yaml` e posizionati in `.agent-forge/specialists/` nella directory del progetto Mercury. Il path canonico per tutti i mercury-strategy specialists è:
+```
+<mercury-project>/.agent-forge/specialists/
+  mercury-strategy-researcher.specialist.yaml
+  mercury-strategy-developer.specialist.yaml
+  mercury-strategy-documentor.specialist.yaml
+  mercury-strategy-backtester.specialist.yaml
+```
+Il loro specialist YAML definisce: il system prompt specifico per dominio, il template del task con output atteso strutturato, il modello preferito, i MCP abilitati, e le condizioni di staleness. Tutti condividono l'accesso a `mercury.db` tramite `mercury-local` MCP, ma ognuno ha permessi di tool limitati al proprio dominio.
+
+> **Campo Mercury-specific — `prompt.normalize_template`:** I mercury-strategy specialists possono includere il campo `prompt.normalize_template` nel loro YAML per gestire correzioni di output (es. word count violations, format enforcement). Questo campo è **di proprietà esclusiva di Mercury**: Agent Forge e unitAI lo ignorano (policy "never reject unknown fields"), ma non lo implementano. Nessun altro sistema deve adottare questo campo senza coordinamento con Mercury. Il loader di Agent Forge lo accetta e lo passa allo specialist senza elaborazione.
 > **Risolto (v1.2):** Agent Forge v0.6.0 introduce `checkpoint.json` per-sessione in `.agent-forge/sessions/{id}/checkpoint.json`. Al riavvio, `agent-forge attach` legge i checkpoint, verifica quali sessioni tmux esistono ancora (con socket path configurabile, non volatile come `/tmp`), e offre all'utente la lista delle sessioni recuperabili. Per Mercury: il Supervisor della strategy suite scrive un checkpoint dopo ogni onda completata. Se la sessione muore a metà Onda 2, il restore parte dall'ultimo checkpoint validato (fine Onda 1), non da zero. Il socket tmux di Agent Forge deve essere configurato su `~/.tmux/agent-forge` (non sotto `/tmp`) per sopravvivere ai restart del sistema.
 > **Gap Critico — Workspace/Issues (`07-critical-review-gap-analysis`):** il salto dalla strategy suite come "configurazione di prompt" alla strategy suite come "piattaforma di agenti collaborativi" richiede tre componenti attualmente mancanti: (1) **Workspace/Issues SQLite** — memoria condivisa cross-specialist e cross-sessione, con tabelle `issues`, `comments`, `relations` per coordinazione asincrona; senza di essa ogni specialist opera in silos e non può riferirsi al lavoro di un collega da sessioni precedenti; (2) **MCP server per l'invocazione dei specialist** — astrae la lifecycle management invece di fare spawning diretto via tmux; (3) **SpecialistArchitect** — wizard automatizzato per la creazione di nuovi specialist YAML. Questi tre pezzi trasformano la suite da un set di prompt indipendenti a un ufficio di agenti genuinamente collaborativo.
 ---
