@@ -57,6 +57,7 @@ export interface EventFilters {
 
 export interface CommitFilters {
   repo?: string;
+  event_id?: string;
   from?: string;
   limit?: number;
   offset?: number;
@@ -236,6 +237,11 @@ export function getCommits(db: Database, filters: CommitFilters): GithubCommit[]
   if (filters.repo) {
     conditions.push("repo = $repo");
     params.$repo = filters.repo;
+  }
+
+  if (filters.event_id) {
+    conditions.push("event_id = $event_id");
+    params.$event_id = filters.event_id;
   }
 
   if (filters.from) {

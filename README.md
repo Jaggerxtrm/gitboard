@@ -87,15 +87,32 @@ bun run test:watch # watch mode
 
 Tests cover the full stack: SQLite store, GitHub poller, API routes, WebSocket channels, Zustand stores, and React components (via react-dom/server SSR rendering).
 
+## Next Phases
+
+| Phase | Version | What |
+|-------|---------|------|
+| Service Health Prep | v0.8.0 | Prometheus proxy, service health table, correlation engine |
+| Production Release | v1.0.0 | CI/CD, npm publish, migration guide |
+| Hooks & Security Guards | v1.3.0 | PreToolUse guards (path boundary, danger, capability, AskUserQuestion blocking) |
+| Proactive Specialists | v1.4.0 | Heartbeat system, specialist knowledge persistence (mulch pattern) |
+| Autonomous Operations | v1.5.0 | Git worktrees, 4-tier merge resolution, event-driven triggers, Mercury alert integration |
+
+See `docs/PRD.md` roadmap for full details.
+
+## Agent Execution (v0.3.0+)
+
+When implementing the specialist/agent execution layer, use the `AgentSession` interface defined in `docs/omni-specialist.md` §4.4. Do not couple the specialist loader directly to `@mariozechner/pi`.
+
+- **Recommended implementation**: `PiAgentSession` — thin wrapper over `@mariozechner/pi` RpcClient
+- **Qwen backend**: use `provider: 'openai'` with `baseURL: https://dashscope.aliyuncs.com/compatible-mode/v1`, read OAuth token from `~/.qwen/oauth_creds.json`. See `docs/pi-engine.md` §7.1.
+
 ## Documentation
 
-See [HANDOFF.md](HANDOFF.md) for implementation details and [docs/](docs/) for design specs:
-
-- [docs/PRD.md](docs/PRD.md) — Full product requirements
+- [docs/PRD.md](docs/PRD.md) — Full product requirements (authority)
 - [docs/github-dashboard.md](docs/github-dashboard.md) — GitHub Activity Dashboard spec
 - [docs/dashboard-design.md](docs/dashboard-design.md) — Omni-Dashboard shell
 - [docs/pi-engine.md](docs/pi-engine.md) — Pi RPC execution layer
-- [docs/omni-specialist.md](docs/omni-specialist.md) — Specialist YAML schema
+- [docs/omni-specialist.md](docs/omni-specialist.md) — Specialist YAML schema (§4.4: AgentSession)
 - [docs/ecosystem-alignment-delta.md](docs/ecosystem-alignment-delta.md) — Cross-system alignment decisions
 
 ## License
