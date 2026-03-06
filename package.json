@@ -4,11 +4,14 @@
   "description": "CLI/TUI orchestrator for AI agents managing Mercury stack services",
   "type": "module",
   "scripts": {
+    "dev": "bun run src/index.ts",
+    "dev:dashboard": "vite --config vite.config.ts",
+    "build:dashboard": "vite build --config vite.config.ts",
+    "start": "bun run src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
-    "start": "bun src/index.ts"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
