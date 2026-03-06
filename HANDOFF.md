@@ -161,6 +161,24 @@ These come in later phases — don't scaffold them now:
 - **No Grafana replacement** — agents query Prometheus directly when needed (v1.4.0+)
 - **No Telegram replacement** — existing Mercury alerting pipeline preserved
 
+### Agent Execution — AgentSession Interface (v0.3.0+, not needed for Phase 1-3)
+
+When you reach the specialist/agent execution layer, use the `AgentSession` interface defined in `docs/omni-specialist.md` §4.4. Do not couple the specialist loader directly to `@mariozechner/pi`.
+
+```typescript
+interface AgentSession {
+  prompt(task: string): Promise<void>;
+  waitForIdle(timeoutMs?: number): Promise<void>;
+  getLastOutput(): string;
+  kill(): void;
+  readonly meta: AgentSessionMeta;
+}
+```
+
+Implement a `PiAgentSession` class that wraps `@mariozechner/pi` RpcClient. This keeps pi swappable — if the pi API changes, only the wrapper changes, not the specialist loader or tool surface.
+
+**Qwen backend note** (`docs/pi-engine.md` §7.1): Qwen is not a native pi provider. Use `provider: 'openai'` with `baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1'` and read the OAuth token from `~/.qwen/oauth_creds.json` (written by `qwen auth login`). No OAuth to implement.
+
 ---
 
 ## Project Structure (target)
@@ -171,6 +189,8 @@ src/
     store.ts               # bun:sqlite init + migrations
     github-store.ts        # GitHub table operations
     github-poller.ts       # GitHub API ingestion loop
+    agent-session.ts       # AgentSession interface (v0.3.0+)
+    pi-agent-session.ts    # PiAgentSession: @mariozechner/pi wrapper (v0.3.0+)
   api/
     server.ts              # Hono HTTP + WebSocket
     routes/
