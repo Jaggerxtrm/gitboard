@@ -11,6 +11,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    fs: {
+      allow: ["."],
+    },
     proxy: {
       "/api": {
         target: "http://localhost:3000",
