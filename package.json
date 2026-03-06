@@ -1,0 +1,19 @@
+{
+  "name": "agent-forge",
+  "version": "0.1.0",
+  "description": "CLI/TUI orchestrator for AI agents managing Mercury stack services",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "start": "bun src/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {}
+}
