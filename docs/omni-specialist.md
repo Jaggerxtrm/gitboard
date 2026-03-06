@@ -72,7 +72,7 @@ Bun/TypeScript within the unitAI npm package. Developed in Bun for consistency w
 - **Transport Layer:** stdio MCP server (unchanged)
 - **Permission Manager:** 4-tier system (READ_ONLY, LOW, MEDIUM, HIGH). Maps to Agent Forge `capabilities.file_scope` and `capabilities.blocked_tools` when a specialist defines them.
 - **Circuit Breaker:** Three-state (CLOSED / HALF_OPEN / OPEN) per backend, consistent with Agent Forge v0.6.0 circuit breaker pattern. Tracks consecutive failures, not just binary up/down.
-- **Backend Connectors:** Gemini, Qwen, Droid, Cursor, Rovo CLI wrappers. Same backends as Agent Forge profiles but invoked directly (no tmux).
+- **Backend Connectors:** Implementations of the `AgentSession` interface (see §4.4) for each CLI backend — Gemini, Qwen, Droid, Cursor, Rovo. Recommended backing: `@mariozechner/pi` RpcClient thin wrapper. Swappable without touching the specialist loader or tool surface.
 - **Tool Registry:** Zod-validated MCP tool definitions (4 tools).
 #### Layer 2: Specialist Loader (Bridge)
 Runtime component for discovery, validation, caching, and rendering. This component is architecturally identical to Agent Forge's `core/specialist-loader.ts`. Both implement the same Zod schema, same discovery order, same template engine. The goal is eventual extraction into a shared npm package (`@jaggerxtrm/specialist-loader`) once both systems stabilize.
@@ -344,6 +344,78 @@ Each field is used by one or more systems. No system rejects unknown fields.
 - **skill:** The specialist's `prompt.system` is injected directly into the agent's context (CLAUDE.md, system prompt, or equivalent). No backend call happens. The specialist acts as domain knowledge, not as a task executor. Agent Forge already does this when writing specialist prompts to session-scoped CLAUDE.md files.
 - **auto:** The system decides based on context. If the caller is an interactive agent session (Agent Forge tmux), skill mode is preferred (inject knowledge). If the caller is a programmatic MCP call (unitAI), tool mode is used. This is the recommended default for most specialists.
 The relationship between specialists and skills is fluid. Agent Forge's PRD defines three knowledge layers: Rules (always-on constraints), Skills (on-demand procedures), Specialists (domain expert config). A specialist in skill mode behaves like a skill with structure, validation, and versioning. The skill-to-specialist promotion path (`agent-forge specialist create --from-skill`) and the specialist-in-skill-mode are two sides of the same coin.
+
+### 4.4 AgentSession Interface (Execution Substrate)
+
+The Backend Connectors in Layer 1 implement a common `AgentSession` interface. This decouples the specialist execution pipeline from any specific underlying library, while allowing the recommended implementation (`@mariozechner/pi` RpcClient) to be swapped without touching the specialist loader or tool surface.
+
+```typescript
+/**
+ * AgentSession: minimal contract for spawning and monitoring a CLI agent.
+ * Implemented by each backend connector (PiAgentSession, DirectApiSession, etc.)
+ */
+interface AgentSession {
+  /** Send a prompt and begin execution. Resolves when the agent accepts the input. */
+  prompt(task: string): Promise<void>;
+
+  /** Wait until the agent finishes its current turn (no active tool calls, no output). */
+  waitForIdle(timeoutMs?: number): Promise<void>;
+
+  /** Return the last assistant text block from this session. */
+  getLastOutput(): string;
+
+  /** Terminate the session and clean up resources. */
+  kill(): void;
+
+  /** Session metadata (backend, model, sessionId). */
+  readonly meta: AgentSessionMeta;
+}
+
+interface AgentSessionMeta {
+  backend:   string;   // 'google-gemini-cli' | 'anthropic' | 'openai' | ...
+  model:     string;
+  sessionId: string;
+  startedAt: Date;
+}
+```
+
+**Recommended implementation — pi thin wrapper:**
+
+`@mariozechner/pi` (RpcClient) is the recommended backing implementation for Bun/TS systems. It handles process lifecycle, JSON event streaming, idle detection, and provider-specific protocol differences (Claude Code `--output-format stream-json`, Gemini CLI, Qwen DashScope, etc.) for all CLI backends.
+
+The wrapper is thin — unitAI defines the `AgentSession` interface above, pi does the work:
+
+```typescript
+import { RpcClient } from '@mariozechner/pi';
+
+class PiAgentSession implements AgentSession {
+  private client: RpcClient;
+
+  constructor(provider: string, cwd: string) {
+    this.client = new RpcClient({ provider, cwd });
+  }
+
+  async prompt(task: string)           { await this.client.prompt(task); }
+  async waitForIdle(ms?: number)       { await this.client.waitForIdle(ms); }
+  getLastOutput(): string              { return this.client.get_last_assistant_text(); }
+  kill(): void                         { this.client.kill(); }
+
+  readonly meta: AgentSessionMeta = { /* ... */ };
+}
+```
+
+**Why this boundary matters:**
+
+If `@mariozechner/pi` changes its API, only `PiAgentSession` changes — not the specialist loader, not the tool surface, not the YAML schema. A future `DirectApiSession` (calling Claude/Gemini APIs directly without a CLI) would implement the same interface, enabling unitAI to support non-CLI backends without any changes to the orchestration layer.
+
+**execution.mode mapping through AgentSession:**
+
+| `execution.mode` | How AgentSession is used |
+|-----------------|--------------------------|
+| `tool` | Create session, `prompt(task)`, `waitForIdle()`, `getLastOutput()`, `kill()` |
+| `skill` | No AgentSession created — system prompt injected into caller's context directly |
+| `auto` | MCP call context → `tool` mode; interactive session context → `skill` mode |
+
 ---
 
 ## 5. Inter-Specialist Communication
