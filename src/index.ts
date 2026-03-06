@@ -1,6 +1,7 @@
 import { createDatabase } from "./core/store.ts";
 import { getRepos } from "./core/github-store.ts";
 import { GithubPoller, getGithubToken } from "./core/github-poller.ts";
+import { discoverAndInsert } from "./core/github-discover.ts";
 import { startServer } from "./api/server.ts";
 
 const DB_PATH = process.env.AGENT_FORGE_DB ?? `${process.env.HOME}/.agent-forge/state.db`;
@@ -13,9 +14,14 @@ startServer(db, { port: PORT });
 
 try {
   const token = getGithubToken();
-  const repos = getRepos(db)
+  let repos = getRepos(db)
     .filter((r) => r.tracked)
     .map((r) => r.full_name);
+
+  if (repos.length === 0) {
+    console.log("[agent-forge] No tracked repos found. Running auto-discovery...");
+    repos = await discoverAndInsert(db);
+  }
 
   const poller = new GithubPoller(db, token);
 
