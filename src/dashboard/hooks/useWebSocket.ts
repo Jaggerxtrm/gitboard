@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { WsClient, buildWsUrl } from "../api/ws.ts";
-import type { WsHandler } from "../api/ws.ts";
+import { WsClient, buildWsUrl } from "../lib/ws.ts";
+import type { WsHandler } from "../lib/ws.ts";
 
 let sharedClient: WsClient | null = null;
 

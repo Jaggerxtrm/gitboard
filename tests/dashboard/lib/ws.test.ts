@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { WsClient, buildWsUrl } from "../../../src/dashboard/api/ws.ts";
+import { WsClient, buildWsUrl } from "../../../src/dashboard/lib/ws.ts";
 
 class MockWs {
   readyState = 1; // OPEN

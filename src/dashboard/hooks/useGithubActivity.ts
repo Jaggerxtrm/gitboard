@@ -1,8 +1,8 @@
 import { useEffect, useCallback } from "react";
 import { useGithubStore } from "../stores/github.ts";
-import { apiClient } from "../api/client.ts";
+import { apiClient } from "../lib/client.ts";
 import { useWebSocket } from "./useWebSocket.ts";
-import type { WsMessage } from "../api/ws.ts";
+import type { WsMessage } from "../lib/ws.ts";
 import type { GithubEvent } from "../../types/github.ts";
 
 export function useGithubActivity(): void {

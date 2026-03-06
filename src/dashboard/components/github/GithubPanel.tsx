@@ -5,7 +5,7 @@ import { RepoFilter } from "./RepoFilter.tsx";
 import { ActivityTimeline } from "./ActivityTimeline.tsx";
 import { CommitList } from "./CommitList.tsx";
 import { ContributionHeatmap } from "./ContributionHeatmap.tsx";
-import { apiClient } from "../../api/client.ts";
+import { apiClient } from "../../lib/client.ts";
 import type { GithubEvent } from "../../../types/github.ts";
 
 export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => void } = {}) {

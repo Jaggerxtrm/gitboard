@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ApiClient } from "../../../src/dashboard/api/client.ts";
+import { ApiClient } from "../../../src/dashboard/lib/client.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFetch = any;
