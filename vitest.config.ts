@@ -7,5 +7,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
     },
+    environmentMatchGlobs: [
+      ["tests/dashboard/**", "happy-dom"],
+    ],
+    setupFiles: ["tests/dashboard/setup.ts"],
   },
 });

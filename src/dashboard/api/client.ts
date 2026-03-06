@@ -1,0 +1,88 @@
+import type {
+  EventsResponse,
+  CommitsResponse,
+  ReposResponse,
+  ContributionsResponse,
+  Summary,
+  GithubRepo,
+  EventFilter,
+} from "../../types/github.ts";
+
+export class ApiClient {
+  constructor(private baseUrl: string = "") {}
+
+  private async get<T>(path: string): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`);
+    if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+    return res.json() as Promise<T>;
+  }
+
+  private async post<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+    return res.json() as Promise<T>;
+  }
+
+  private async put<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+    return res.json() as Promise<T>;
+  }
+
+  getEvents(filter: EventFilter = {}): Promise<EventsResponse> {
+    const params = new URLSearchParams();
+    if (filter.repos?.length) params.set("repos", filter.repos.join(","));
+    if (filter.types?.length) params.set("types", filter.types.join(","));
+    if (filter.branch) params.set("branch", filter.branch);
+    if (filter.from) params.set("from", filter.from);
+    if (filter.to) params.set("to", filter.to);
+    if (filter.search) params.set("search", filter.search);
+    if (filter.group) params.set("group", filter.group);
+    if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+    if (filter.offset !== undefined) params.set("offset", String(filter.offset));
+    const qs = params.toString();
+    return this.get(`/api/github/events${qs ? `?${qs}` : ""}`);
+  }
+
+  getEvent(id: string): Promise<unknown> {
+    return this.get(`/api/github/events/${encodeURIComponent(id)}`);
+  }
+
+  getCommits(repo?: string, from?: string): Promise<CommitsResponse> {
+    const params = new URLSearchParams();
+    if (repo) params.set("repo", repo);
+    if (from) params.set("from", from);
+    const qs = params.toString();
+    return this.get(`/api/github/commits${qs ? `?${qs}` : ""}`);
+  }
+
+  getRepos(): Promise<ReposResponse> {
+    return this.get("/api/github/repos");
+  }
+
+  addRepo(full_name: string): Promise<GithubRepo> {
+    return this.post("/api/github/repos", { full_name });
+  }
+
+  updateRepo(name: string, updates: Partial<GithubRepo>): Promise<GithubRepo> {
+    return this.put(`/api/github/repos/${encodeURIComponent(name)}`, updates);
+  }
+
+  getContributions(): Promise<ContributionsResponse> {
+    return this.get("/api/github/contributions");
+  }
+
+  getSummary(period: "today" | "week" | "month" = "today"): Promise<Summary> {
+    return this.get(`/api/github/summary?period=${period}`);
+  }
+}
+
+export const apiClient = new ApiClient();

@@ -1,0 +1,40 @@
+import { useEffect, useRef } from "react";
+import { WsClient, buildWsUrl } from "../api/ws.ts";
+import type { WsHandler } from "../api/ws.ts";
+
+let sharedClient: WsClient | null = null;
+
+function getSharedClient(): WsClient {
+  if (!sharedClient) {
+    sharedClient = new WsClient(buildWsUrl());
+    sharedClient.connect();
+  }
+  return sharedClient;
+}
+
+export function useWebSocket(channel: string, handler: WsHandler): void {
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+
+  useEffect(() => {
+    const client = getSharedClient();
+    client.subscribe(channel);
+
+    const unsubHandler = client.onMessage((msg) => {
+      if (msg.channel === channel) {
+        handlerRef.current(msg);
+      }
+    });
+
+    return () => {
+      unsubHandler();
+      client.unsubscribe(channel);
+    };
+  }, [channel]);
+}
+
+/** For testing: reset the shared client (so tests can inject mocks) */
+export function _resetSharedClient(): void {
+  sharedClient?.disconnect();
+  sharedClient = null;
+}
