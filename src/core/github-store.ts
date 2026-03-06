@@ -254,6 +254,12 @@ export function getCommits(db: Database, filters: CommitFilters): GithubCommit[]
     .all(params);
 }
 
+export function getCommit(db: Database, sha: string): GithubCommit | null {
+  return (
+    db.query<GithubCommit, AnyParams>("SELECT * FROM github_commits WHERE sha = $sha").get({ $sha: sha }) ?? null
+  );
+}
+
 export function getRepos(db: Database): GithubRepo[] {
   return db.query<GithubRepo, never[]>("SELECT * FROM github_repos ORDER BY full_name").all();
 }
