@@ -350,7 +350,71 @@ Global view of all inter-agent communication. Filterable by agent, type, priorit
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.6 Registry Browser
+### 3.6 GitHub Activity Panel
+
+Full GitHub activity tracking across all tracked repositories. The first panel of the omni-dashboard — detailed design in [github-dashboard.md](./github-dashboard.md).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Agent Forge Dashboard                          ● System OK     │
+├──────────┬──────────────────────────────────────────────────────┤
+│          │                                                      │
+│  Fleet   │  GitHub Activity                     Mar 6, 2026     │
+│  --------│  ────────────────────────────────────────────────── │
+│  ● claude│                                                      │
+│  ○ gemini│  Contribution Map (12 weeks, CSS grid)               │
+│  ◌ qwen  │  ░░▒▒▓▓██░░▒▒▓▓░░░░▒▒▓▓██░░▒▒░░░░░░▒▒▓▓██████▒▒ │
+│          │                                                      │
+│  Tabs    │  Repos: [All ▼]  Types: [All ▼]  [Today ▼]         │
+│  --------│                                                      │
+│  [Fleet] │  Activity Timeline       │ Detail                   │
+│ >[GitHub]│  ──────────────────────  │ ──────────────────────── │
+│  [Svc]   │  15:41 mercury-api       │ feat: add rate limiter   │
+│  [Reg]   │   (git-commit) Push  3c  │ +142  -23  5 files       │
+│          │  15:38 mercury-ingestion  │ Commits:                 │
+│          │   (git-merge) PR #47      │  a3f2c1d rate limiter    │
+│          │  15:12 mercury-api        │  b8e4a22 middleware      │
+│          │   (git-pull-request) #128 │ [View on GitHub ->]      │
+│          │                           │                          │
+│          │  Today: 12 push  4 merge  2 PR opened  1 review     │
+├──────────┴──────────────────────────────────────────────────────┤
+│  Protocol: collaborative ▶ Turn 2/3 (critique) │ Elapsed: 4:23 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key features:**
+- **ActivityFeed**: Scrollable timeline with virtualized rendering (`@tanstack/react-virtual`) for 1000+ events. Each row shows time, repo, event type (Octicon + subtle color), and title.
+- **CommitDetail**: Right panel shows full commit message, line stats (+/-), file count, and links to GitHub.
+- **ContributionMap**: 12-week heatmap built with CSS grid. Cells are colored by contribution count. Click a cell to filter the timeline to that date.
+- **RepoFilter**: Multi-select dropdown for repos, event types, branches. Supports repo groups (e.g. "mercury" = all mercury-* repos).
+- **EventIcon**: Uses `@primer/octicons-react` for GitHub-native iconography. Colors are subtle (low saturation on dark background) — see [github-dashboard.md](./github-dashboard.md) Section 6.2 for the full color system.
+- **DaySummary**: Bottom bar with aggregate stats for the selected period.
+
+**Data source**: `state.db` tables `github_events`, `github_commits`, `github_repos` — populated by `github-poller.ts` every 5 minutes. See [github-dashboard.md](./github-dashboard.md) Section 3 for full schema.
+
+### 3.7 Service Health Panel (v0.8.0+)
+
+Stub view for future service monitoring. Will display health status of tracked services (containers, Prometheus metrics, Loki log alerts) with correlation to GitHub deploys.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Services                        Filter: [All ▼] [Healthy ▼]    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  mercury-api          ● Healthy     CPU: 12%   Mem: 340MB       │
+│  mercury-ingestion    ● Healthy     CPU: 8%    Mem: 180MB       │
+│  mercury-worker       ▲ Warning     CPU: 78%   Mem: 1.2GB       │
+│    └ Last push: 3min ago (a3f2c1d)  ← correlated with GitHub   │
+│  prometheus           ● Healthy     Targets: 52/52 up           │
+│  grafana              ● Healthy     Dashboards: 14              │
+│  loki                 ● Healthy     Ingestion: 12k lines/min    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Integration with Mercury's existing `EconomicReleaseMonitor` (Redis pub/sub) and Prometheus Alertmanager happens via the webhook receiver defined in PRD v1.5.0. Telegram notifications are preserved as the real-time push channel. The dashboard adds visual correlation and agent interaction context. See [github-dashboard.md](./github-dashboard.md) Section 7 for the full alert-to-dashboard bridge architecture.
+
+### 3.8 Registry Browser
 
 Browse all available profiles, protocols, specialists. Same data as TUI's F6 panel, but with richer display.
 
@@ -384,6 +448,17 @@ Browse all available profiles, protocols, specialists. Same data as TUI's F6 pan
 ### 4.1 REST Endpoints
 
 ```
+# GitHub Activity (v0.7.0 — see github-dashboard.md for full spec)
+GET    /api/github/events              # Paginated, filterable activity timeline
+GET    /api/github/events/:id          # Single event with commits
+GET    /api/github/commits             # Commits, paginated
+GET    /api/github/repos               # Tracked repos list
+POST   /api/github/repos               # Add repo to track
+PUT    /api/github/repos/:name         # Update (color, display_name, group)
+GET    /api/github/contributions        # Heatmap data (12 weeks)
+GET    /api/github/summary             # Aggregate stats (period=today|week|month)
+
+# Sessions
 GET    /api/sessions                   # List all sessions
 POST   /api/sessions                   # Spawn new agent
 GET    /api/sessions/:id               # Get session detail
@@ -415,6 +490,7 @@ GET    /api/system/config              # Current config
 { type: "subscribe", channel: "output:abc123" }
 { type: "subscribe", channel: "messages" }
 { type: "subscribe", channel: "protocol:run-xyz" }
+{ type: "subscribe", channel: "github:activity" }
 { type: "unsubscribe", channel: "session:abc123" }
 
 // Server → Client
@@ -571,6 +647,23 @@ Add the API layer as the TUI is being built. This ensures both UIs share the sam
 - Mobile-optimized layout
 - Protocol Runner wizard (start protocols from Dashboard)
 
+### Phase 3.5: GitHub Activity Panel (v0.7.0)
+
+- GitHub data layer in state.db (events, commits, repos tables)
+- github-poller.ts: periodic ingestion via GitHub REST + GraphQL API
+- GithubPanel tab: activity timeline, contribution heatmap, repo filters
+- Octicons for event type iconography, subtle color system
+- WebSocket channel github:activity for real-time updates
+- Configuration: github.* section in config.yaml
+- See: [github-dashboard.md](./github-dashboard.md)
+
+### Phase 3.7: Service Health Prep (v0.8.0)
+
+- GitHub Actions workflow run tracking
+- Prometheus query proxy for metric access
+- Service health table + ServicePanel stub
+- Correlation engine: GitHub deploy timestamps vs service health changes
+
 ### Phase 4: Advanced Features (v0.6.0+)
 
 - Approval workflows (boss requests → Dashboard approves)
@@ -622,6 +715,8 @@ To avoid scope creep and maintain the "headless-first" principle:
 3. **Not a replacement for the TUI** — The TUI remains the fastest interface for terminal operators. The Dashboard adds accessibility, richer visualization, and mobile monitoring.
 4. **Not a required component** — Agent Forge works fully without the Dashboard. CLI and TUI are the primary interfaces. The Dashboard is Layer 4 additive.
 5. **Not a multi-tenant platform** — Single user, local-first. Network mode is for personal remote access, not team management (that's OpenClaw's domain).
+6. **Not a replacement for Grafana** — Grafana remains the metrics visualization layer. The Dashboard provides GitHub activity context and agent interaction; Grafana provides infrastructure metrics. Integration is through data correlation (Prometheus query proxy, alert timestamps), not duplication.
+7. **Not a replacement for Telegram alerts** — The Mercury stack's Telegram notifications remain the real-time push channel. The Dashboard adds visual correlation and agent context that Telegram cannot provide.
 
 ---
 
@@ -655,8 +750,33 @@ agent-forge/
 │   │   ├── vite.config.ts
 │   │   ├── api/
 │   │   ├── stores/
+│   │   │   ├── sessions.ts          # Zustand — session state
+│   │   │   ├── messages.ts          # Message feed state
+│   │   │   ├── protocol.ts          # Active protocol state
+│   │   │   └── github.ts            # GitHub activity state (v0.7.0)
 │   │   ├── components/
+│   │   │   ├── fleet/               # Agent fleet views
+│   │   │   ├── agent/               # Agent detail views
+│   │   │   ├── boss/                # Boss/orchestrator panel
+│   │   │   ├── protocol/            # Protocol monitoring
+│   │   │   ├── messages/            # Message feed
+│   │   │   ├── github/              # GitHub activity panel (v0.7.0)
+│   │   │   │   ├── GithubPanel.tsx
+│   │   │   │   ├── ActivityFeed.tsx
+│   │   │   │   ├── EventRow.tsx
+│   │   │   │   ├── EventIcon.tsx
+│   │   │   │   ├── CommitDetail.tsx
+│   │   │   │   ├── ContributionMap.tsx
+│   │   │   │   ├── RepoFilter.tsx
+│   │   │   │   └── DaySummary.tsx
+│   │   │   ├── services/            # Service health panel (v0.8.0 stub)
+│   │   │   ├── registry/            # Registry browser
+│   │   │   └── common/              # Shared components
 │   │   ├── hooks/
+│   │   │   ├── useWebSocket.ts
+│   │   │   ├── useAgentOutput.ts
+│   │   │   ├── useSessions.ts
+│   │   │   └── useGithubActivity.ts # GitHub feed subscription (v0.7.0)
 │   │   └── styles/
 │   │
 │   ├── cli/
@@ -682,7 +802,9 @@ agent-forge/
     "tailwindcss": "^4.x",
     "@xterm/xterm": "^5.x",
     "zustand": "^5.x",
-    "lucide-react": "^0.x"
+    "lucide-react": "^0.x",
+    "@primer/octicons-react": "^19.x",
+    "@tanstack/react-virtual": "^3.x"
   }
 }
 ```

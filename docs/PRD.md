@@ -1,8 +1,8 @@
 # Agent Forge — Product Requirements Document
 
-**Date**: 2026-02-27
+**Date**: 2026-03-06
 **Status**: Approved
-**Version**: 1.2.0
+**Version**: 1.3.0
 
 ## 1. Identity & Core Concept
 
@@ -180,6 +180,58 @@ CREATE TABLE messages (
 CREATE INDEX idx_inbox    ON messages (to_session, read);
 CREATE INDEX idx_thread   ON messages (thread_id);
 CREATE INDEX idx_priority ON messages (priority, created_at);
+
+-- GitHub activity tracking (v0.7.0 — Omni-Dashboard)
+-- Persists GitHub events beyond the 90-day API limit.
+-- Queried by monitoring specialists for deploy-to-error correlation.
+-- See: docs/github-dashboard.md for full schema and rationale.
+
+CREATE TABLE github_events (
+  id              TEXT PRIMARY KEY,        -- GitHub event ID (dedup key)
+  type            TEXT NOT NULL,           -- PushEvent, PullRequestEvent, etc.
+  repo            TEXT NOT NULL,           -- owner/repo
+  branch          TEXT,                    -- ref extracted from payload
+  actor           TEXT NOT NULL,           -- GitHub username
+  action          TEXT,                    -- opened, closed, merged, created
+  title           TEXT,                    -- PR title, issue title, first commit msg
+  body            TEXT,                    -- full description or commit messages
+  url             TEXT,                    -- html_url to GitHub
+  additions       INTEGER,
+  deletions       INTEGER,
+  changed_files   INTEGER,
+  commit_count    INTEGER,                -- number of commits (PushEvent)
+  created_at      DATETIME NOT NULL,
+  ingested_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE github_commits (
+  sha             TEXT PRIMARY KEY,
+  repo            TEXT NOT NULL,
+  branch          TEXT,
+  author          TEXT NOT NULL,
+  message         TEXT NOT NULL,
+  url             TEXT,
+  additions       INTEGER,
+  deletions       INTEGER,
+  changed_files   INTEGER,
+  event_id        TEXT REFERENCES github_events(id),
+  committed_at    DATETIME NOT NULL
+);
+
+CREATE TABLE github_repos (
+  full_name       TEXT PRIMARY KEY,        -- owner/repo
+  display_name    TEXT,                    -- short alias for dashboard UI
+  tracked         BOOLEAN DEFAULT TRUE,
+  group_name      TEXT,                    -- optional grouping (e.g. "mercury", "infra")
+  last_polled_at  DATETIME,
+  color           TEXT                     -- hex color for UI differentiation
+);
+
+CREATE INDEX idx_gh_events_repo   ON github_events(repo, created_at DESC);
+CREATE INDEX idx_gh_events_type   ON github_events(type, created_at DESC);
+CREATE INDEX idx_gh_events_date   ON github_events(created_at DESC);
+CREATE INDEX idx_gh_commits_repo  ON github_commits(repo, committed_at DESC);
+CREATE INDEX idx_gh_commits_event ON github_commits(event_id);
 ```
 
 ### State Reconciliation
@@ -927,6 +979,8 @@ agent-forge/
 |   |   +-- watchdog.ts             # Reconciliation loop: liveness + progress + interaction (v0.6.0)
 |   |   +-- event-bridge.ts         # JSONL event emitter for observability (v0.6.0)
 |   |   +-- hook-deployer.ts        # Mode B: deploy Claude Code hooks to session dirs (v1.3.0)
+|   |   +-- github-store.ts         # GitHub SQLite tables + CRUD (v0.7.0)
+|   |   +-- github-poller.ts        # Periodic GitHub API ingestion (v0.7.0)
 |   |
 |   +-- pi/
 |   |   +-- rpc-pool.ts             # gestisce N istanze RpcClient (una per agente)
@@ -981,6 +1035,8 @@ agent-forge/
     +-- profiles.md
     +-- protocols.md
     +-- architecture.md
+    +-- dashboard-design.md          # Web dashboard design (Layer 4)
+    +-- github-dashboard.md          # GitHub Activity panel design (v0.7.0)
 ```
 
 ### Distribution
@@ -1084,6 +1140,24 @@ v0.6.0 -- Resilience & Polish
   Log management (rotation, cleanup)
   Profile test command
 
+v0.7.0 -- Omni-Dashboard: GitHub Activity
+  GitHub data layer: github_events, github_commits, github_repos tables in state.db
+  github-poller: periodic ingestion via GitHub REST + GraphQL API (gh auth token)
+  API routes: /api/github/* (events, commits, repos, contributions, summary)
+  WebSocket channel: github:activity (real-time new events on ingestion)
+  Dashboard GithubPanel: activity timeline, contribution heatmap, repo filters
+  Octicons (@primer/octicons-react) for event type iconography
+  Configuration: github.* section in config.yaml (repos, groups, poll_interval)
+  Specialist schema additions: skill_inherit, diagnostic_scripts fields
+  See: docs/github-dashboard.md
+
+v0.8.0 -- Omni-Dashboard: Service Health Prep
+  GitHub Actions workflow run tracking (status, duration, failures)
+  Prometheus query proxy: /api/services/metrics?query=<promql>
+  Service health table in state.db (service_name, status, last_check, source)
+  Dashboard ServicePanel stub: service grid with health indicators
+  Correlation engine: match github_events timestamps against service health changes
+
 v1.0.0 -- Production Release
   Full documentation
   CI/CD pipeline
@@ -1131,11 +1205,15 @@ v1.3.x -- SQLite-First Communication (annotato per v1.3.0+)
   Prerequisito: studio degli hook di ciascun CLI agent
     (Claude Code: 8 tipi documentati; Gemini/Qwen/GLM: da investigare)
 
-v1.4.0 -- Proactive Specialists
+v1.4.0 -- Proactive Specialists & Monitoring
   Heartbeat system (scheduled specialist execution)
   Staleness auto-detection + updater agent
   Specialist-to-specialist communication (Inbox pattern)
   Continuous monitoring mode
+  Service monitoring specialists: wake on schedule, query github_events + Prometheus
+  Correlation: "error rate spike started 2min after push a3f2c1d on mercury-api"
+  Memory deduplication: specialist checks specialist_events + incidents before re-reporting
+  Diagnostic script execution: specialists run inherited service skill scripts (health_probe.py, log_hunter.py)
 
 v1.5.0 -- Autonomous Operations
   Container mode: official Docker deployment with named volumes for state.db, logs, socket
@@ -1147,6 +1225,9 @@ v1.5.0 -- Autonomous Operations
     - Git worktrees (moved from v2.0.0): parallel agents on same repo without conflicts
   Event-driven triggers: on_external_event forge hook with HTTP/webhook receiver
     (e.g., error rate > 5% → spawn incident protocol; CI failure → spawn troubleshoot)
+    Integration with Mercury AlertManager: Redis pub/sub alerts → webhook → agent-forge
+    Integration with Prometheus Alertmanager: firing alerts → /api/alerts/ingest
+    Telegram notification channel preserved — agent-forge adds dashboard context, not replaces
   Incidents table: detection, notification, and tracking for ALL problems — not just code fixes
     CREATE TABLE incidents (
       id           TEXT PRIMARY KEY,
@@ -1277,6 +1358,12 @@ specialist:
         path: .serena/memories/ssot_mercury_database_2026-02-05.md
     stale_threshold_days: 14
 
+  skill_inherit: .claude/skills/mercury-db/SKILL.md   # Optional: load service SKILL.md into agents.md at spawn
+                                                       # Gives specialist the service's architecture, failure modes,
+                                                       # log patterns, and diagnostic knowledge without duplication.
+                                                       # The SKILL.md is appended after prompt.system in agents.md.
+                                                       # Staleness of skill and specialist are tracked independently.
+
   capabilities:                     # Active: enforced by PreToolUse hook at session spawn
     file_scope:                     # Filesystem access boundaries
       - mercury/database/           # read/write allowed
@@ -1284,6 +1371,10 @@ specialist:
     blocked_tools:                  # Tools this specialist must not use
       - Bash                        # read-only specialist, no shell execution
     can_spawn: false                # Cannot spawn sub-agents (worker, not boss)
+    diagnostic_scripts:             # Executable scripts the specialist can run via Bash
+      - .claude/skills/mercury-db/scripts/health_probe.py    # inherited from service skill
+      - .claude/skills/mercury-db/scripts/log_hunter.py
+      - .claude/skills/mercury-db/scripts/data_explorer.py
     tools:
       - name: docker_inspect
         purpose: "Check container runtime status"
@@ -1310,7 +1401,11 @@ agent-forge spawn gemini --specialist mercury-db-health "Check connection pools"
               Crea sessionDir: .agent-forge/sessions/{uuid}/
               Scrive agents.md (convenzione nativa di pi):
                 .agent-forge/sessions/{uuid}/agents.md
-                (contiene: system prompt dello specialist + istruzioni AF_STATUS)
+                Contenuto di agents.md (in ordine):
+                  1. prompt.system dello specialist
+                  2. [Se skill_inherit presente] contenuto del SKILL.md referenziato
+                  3. [Se diagnostic_scripts presente] istruzioni d'uso degli script
+                  4. Istruzioni AF_STATUS
 
               Spawn RpcClient:
                 new RpcClient({ provider: 'google-gemini-cli', cwd: sessionDir })
@@ -1319,6 +1414,14 @@ agent-forge spawn gemini --specialist mercury-db-health "Check connection pools"
               Invia task:
                 await pi.prompt(renderTaskTemplate(specialist, userTask))
 ```
+
+### Specialist-Inherits-Skill Pattern
+
+Il campo `skill_inherit` permette a uno specialist di ereditare la conoscenza operativa di un service skill esistente (generato dal service-skills-set scaffolder). Lo SKILL.md viene letto e appeso ad `agents.md` al momento dello spawn, dopo il `prompt.system` dello specialist.
+
+Questo pattern collega il Brain layer di Agent Forge (specialist YAML) al knowledge management del service skills system (SKILL.md + diagnostic scripts), senza duplicazione. Lo specialist porta la logica di orchestrazione (quando svegliarsi, come correlare errori con deploy), lo SKILL.md porta la conoscenza operativa (architettura, failure modes, log patterns, script d'uso).
+
+Il campo `capabilities.diagnostic_scripts` elenca gli script eseguibili che lo specialist puo' invocare via Bash. Sono gli stessi script generati dal service skill builder (`health_probe.py`, `log_hunter.py`, `data_explorer.py`) e vengono documentati in agents.md come tool a disposizione dell'agente.
 
 `agents.md` è la convenzione nativa di pi per il context injection — equivalente a `CLAUDE.md` ma funziona con tutti i provider (non solo Claude). Persiste per tutta la sessione pi senza re-iniezione.
 
@@ -1455,6 +1558,57 @@ MCP è l'interfaccia con cui il **boss** (Claude o un orchestratore esterno) del
 Il Specialist System è **indipendente da MCP**: funziona identicamente come MCP tool (unitAI), CLI command (Agent Forge), import Python (darth_feedor), o context injection (skill mode). Il campo `execution.mode: auto` permette allo stesso specialist di funzionare come tool call o skill injection a seconda del contesto.
 
 Per orchestrazione agent-to-agent, i pattern preferiti sono: CLI subprocesses (`agent-forge spawn`), file-based communication, e SQLite mail — non MCP. MCP aggiunge overhead senza dare valore rispetto a metodi più diretti per la comunicazione inter-agente.
+
+### Integration with Service Skills System
+
+Agent Forge specialists can inherit domain knowledge from the service skills system (built with `jaggers-agent-tools/project-skills/service-skills-set`). The service skills system provides:
+
+- **service-registry.json**: Maps service IDs to file territory globs, skill paths, and sync timestamps
+- **SKILL.md + scripts/**: Each service has documentation (architecture, failure modes, log patterns) and executable diagnostic scripts (`health_probe.py`, `log_hunter.py`, `data_explorer.py`)
+- **PreToolUse hook**: Auto-activates skill loading when an agent touches files in a registered territory
+- **Drift detection**: PostToolUse hook detects when implementation diverges from documented knowledge
+
+The `skill_inherit` field in the specialist YAML bridges these two systems: the specialist brings orchestration logic (when to wake, how to correlate), the SKILL.md brings operational knowledge (what the service does, how to diagnose it, what scripts to run).
+
+```
+Service Skill (Knowledge)              Specialist (Orchestration)
+.claude/skills/mercury-api/            .agent-forge/specialists/mercury-api-monitor.yaml
++-- SKILL.md (architecture,            +-- prompt.system (monitoring logic)
+|   failure modes, log patterns)       +-- skill_inherit → SKILL.md
++-- scripts/health_probe.py           +-- diagnostic_scripts → scripts/*
++-- scripts/log_hunter.py             +-- capabilities (file_scope, blocked_tools)
++-- scripts/data_explorer.py          +-- validation (files_to_watch, stale threshold)
+```
+
+### Integration with External Alert Systems
+
+Agent Forge integrates with existing alert infrastructure without replacing it:
+
+| System | Channel | Agent Forge Role |
+|--------|---------|------------------|
+| Mercury `EconomicReleaseMonitor` | Redis pub/sub → Telegram | v1.5.0: webhook receiver creates incidents in state.db |
+| Mercury `AlertType`/`AlertStatus` | Redis pub/sub | v1.5.0: specialist wakes on alert, correlates with github_events |
+| Prometheus Alertmanager | Webhook → Telegram/PagerDuty | v1.5.0: webhook → /api/alerts/ingest → incident → specialist |
+| Grafana Alerts | Notification channels (Telegram) | Dashboard shows correlation; agents query Prometheus directly |
+| Loki Logs | Grafana Explore | Specialists run `log_hunter.py` which can query Loki API |
+
+The notification hierarchy:
+1. **Telegram** -- immediate push (existing, preserved)
+2. **Dashboard** -- visual correlation + agent interaction context
+3. **TUI status bar** -- tmux indicator for terminal operators
+
+Alert correlation flow (v1.5.0):
+```
+Alert fires (Prometheus/Mercury/Loki)
+  → Webhook to /api/alerts/ingest
+  → Creates row in incidents table
+  → Correlation engine: match created_at against github_events (same repo, last 30min)
+  → If correlated: "Error spike on mercury-api, 3min after push a3f2c1d"
+  → If specialist assigned: wake specialist
+  → Specialist runs diagnostic_scripts, proposes hotfix or reports
+  → Dashboard shows incident + correlation + specialist status
+  → Telegram gets enriched message: "Alert on mercury-api. Correlated with push a3f2c1d. Specialist investigating."
+```
 
 ### Future: Continuous Specialist (Heartbeat)
 
