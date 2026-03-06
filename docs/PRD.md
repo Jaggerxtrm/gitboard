@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-06
 **Status**: Approved
-**Version**: 1.3.0
+**Version**: 1.4.0
 
 ## 1. Identity & Core Concept
 
@@ -978,7 +978,9 @@ agent-forge/
 |   |   +-- specialist-loader.ts    # .specialist.yaml discovery, validation, rendering
 |   |   +-- watchdog.ts             # Reconciliation loop: liveness + progress + interaction (v0.6.0)
 |   |   +-- event-bridge.ts         # JSONL event emitter for observability (v0.6.0)
-|   |   +-- hook-deployer.ts        # Mode B: deploy Claude Code hooks to session dirs (v1.3.0)
+|   |   +-- hook-deployer.ts        # Security guards + Claude Code hooks to session dirs (v1.3.0)
+|   |   +-- guard-generator.ts     # Generate PreToolUse guards from specialist capabilities (v1.3.0)
+|   |   +-- expertise-store.ts     # Specialist knowledge persistence, JSONL read/write (v1.4.0)
 |   |   +-- github-store.ts         # GitHub SQLite tables + CRUD (v0.7.0)
 |   |   +-- github-poller.ts        # Periodic GitHub API ingestion (v0.7.0)
 |   |
@@ -1131,6 +1133,11 @@ v0.6.0 -- Resilience & Polish
   Stalled-agent detection: Phase 2 (last_activity + PostToolUse hook integration)
   waiting_for_input detection: Phase 3 (interaction_patterns in pane)
   Progressive escalation: Level 1 nudge → Level 2 stalled state → parent notification
+  Coordinator auto-wake: boss agent periodically checks worker fleet status via reconciliation
+    - Reads sessions table for stalled/zombie/completed workers
+    - Auto-spawns replacement if worker dies (circuit breaker permitting)
+    - Sends escalation mail to parent or dashboard notification
+    - Pattern from Overstory's watchdog daemon, adapted to boss/worker model
   Circuit breaker: three-state (CLOSED/HALF_OPEN/OPEN) per protocol turn, git-diff based progress
   AF_STATUS block: structured completion signal, auto-injected by specialist-loader
   JSONL event bridge: structured session/message/protocol events (--json output flag)
@@ -1178,13 +1185,41 @@ v1.2.0 -- Advanced TUI
   Split-pane layouts (presets)
   Protocol visualization (flow diagram)
 
-v1.3.0 -- Hooks & Events
+v1.3.0 -- Hooks & Security Guards
   Hook taxonomy (8 official types + PostToolUseFailure):
     SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
     Stop, PreCompact, SessionEnd, Notification, PostToolUseFailure
   Mode A (passive): Agent Forge reacts to Claude Code hook events → updates SQLite state
-  Mode B (active): Agent Forge deploys hook scripts into .claude/settings.json
+  Mode B (active): Agent Forge deploys hook scripts into .claude/settings.local.json
                    of each spawned session's directory (project-scoped, not user-scoped)
+
+  Security Guard System (PreToolUse hooks, deployed at spawn via hook-deployer.ts):
+    Guards are auto-generated from specialist YAML capabilities and deployed to the
+    session's .claude/settings.local.json. Overstory-proven pattern, adapted for AF.
+
+    1. Path Boundary Guards (from capabilities.file_scope):
+       - Restrict file read/write/edit to declared paths only
+       - Workers cannot touch files outside their assigned scope
+       - Boss agents get broader scope but still bounded
+
+    2. Danger Guards (universal, all agents):
+       - Block: git push main/master, git reset --hard, git push --force
+       - Block: rm -rf on project root, DROP TABLE, destructive ops
+       - Always deployed, cannot be overridden by specialist YAML
+
+    3. Capability Guards (from capabilities.blocked_tools + role):
+       - Read-only specialists: block Write, Edit, Bash (write ops)
+       - Workers with can_spawn=false: block agent spawning tools
+       - diagnostic_scripts: only listed scripts are executable, not arbitrary Bash
+
+    4. AskUserQuestion Guard (non-interactive agents):
+       - All tmux-spawned workers block AskUserQuestion (causes indefinite stall)
+       - Workers must escalate via message bus instead (send_message to parent)
+       - Only the boss agent (interactive) retains AskUserQuestion capability
+
+    Guard deployment order: danger → path boundary → capability → user hooks
+    AF guards always precede user-defined hooks to ensure security-first execution.
+
   Hook configuration schema with matcher, timeout, blocking semantics
   Pre/post-spawn hooks: fire before/after tmux session creation
   Protocol completion hooks: fire on turn success/failure/timeout
@@ -1212,8 +1247,38 @@ v1.4.0 -- Proactive Specialists & Monitoring
   Continuous monitoring mode
   Service monitoring specialists: wake on schedule, query github_events + Prometheus
   Correlation: "error rate spike started 2min after push a3f2c1d on mercury-api"
-  Memory deduplication: specialist checks specialist_events + incidents before re-reporting
   Diagnostic script execution: specialists run inherited service skill scripts (health_probe.py, log_hunter.py)
+
+  Specialist Knowledge Persistence (mulch pattern):
+    Monitoring specialists accumulate operational knowledge across wake cycles.
+    Without persistent memory, they re-discover known issues and re-suggest applied fixes.
+
+    Knowledge store: .agent-forge/expertise/ directory (JSONL, git-tracked)
+    Record types:
+      - convention:   stable operational patterns ("mercury-api always OOMs after 72h")
+      - pattern:      recurring correlations ("deploy on Friday → error spike")
+      - failure:      past incidents and their resolutions
+      - decision:     architectural choices with rationale
+      - reference:    links to external docs, runbooks, SKILL.md sections
+      - guide:        step-by-step procedures for common operations
+
+    Classification + shelf life:
+      - foundational: permanent (conventions, architecture decisions)
+      - tactical:     14-day shelf life (recent observations, temporary workarounds)
+      - observational: 30-day shelf life (hypotheses, unconfirmed patterns)
+
+    Specialist wake cycle with knowledge:
+      1. Prime: load relevant expertise records (token-budgeted, filtered by domain)
+      2. Execute: run diagnostics, query Prometheus, check github_events
+      3. Deduplicate: check expertise + specialist_events before reporting
+      4. Record: store new insights (mulch record <domain> --type <type>)
+      5. Compact: summarize old closed records to save context window tokens
+      6. Sync: git-commit .agent-forge/expertise/ changes
+
+    Conflict resolution for multi-agent writes:
+      - Advisory file locking (withFileLock per JSONL domain file)
+      - Atomic writes (write to tmp, rename)
+      - .gitattributes merge=union for *.jsonl (auto-merge on git pull)
 
 v1.5.0 -- Autonomous Operations
   Container mode: official Docker deployment with named volumes for state.db, logs, socket
@@ -1222,7 +1287,19 @@ v1.5.0 -- Autonomous Operations
     - Agents work on branches; propose changes via pull requests (gh pr create)
     - wait_for: pr_merged | pr_closed turn type (human approval via PR review)
     - Git permission Rules: agents can push branches, cannot merge to main, cannot force-push
-    - Git worktrees (moved from v2.0.0): parallel agents on same repo without conflicts
+    - Git worktrees: parallel agents on same repo without file conflicts
+      Each spawned worker gets .agent-forge/worktrees/{agent-name}/
+      Worktree redirect: .agent-forge/worktrees/{name}/.beads/redirect → parent DB
+      Shared state.db accessed via WAL mode (concurrent readers, single writer)
+      Path boundary guards auto-scoped to worktree root
+      ov worktree clean equivalent: garbage-collect completed agent worktrees
+    - Tiered merge resolution (4-tier, adapted from Overstory):
+      Tier 1 — Clean merge: standard git merge, no conflicts
+      Tier 2 — Auto-resolve: keep incoming (agent) changes for non-overlapping edits
+      Tier 3 — AI-resolve: spawn resolver specialist to handle semantic conflicts
+      Tier 4 — Re-imagine: abort merge, re-implement changes from scratch on clean base
+      Conflict patterns recorded to expertise store for future learning
+      Dedicated merger role: specialist with merge-specific capabilities + git knowledge
   Event-driven triggers: on_external_event forge hook with HTTP/webhook receiver
     (e.g., error rate > 5% → spawn incident protocol; CI failure → spawn troubleshoot)
     Integration with Mercury AlertManager: Redis pub/sub alerts → webhook → agent-forge
@@ -1259,7 +1336,13 @@ v2.0.0 -- ForgeManager & Ecosystem
   Specialist marketplace (community-shared domain configs)
   Multi-project support
   Skill-to-specialist migration CLI
-  Git worktree support (agent isolation for file-writing workers)
+  Task tracker integration (pluggable backend: beads/seeds or built-in)
+    TrackerClient interface: show, create, close, list, ready, claim
+    bd/sd CLI bridge or native SQLite implementation
+    Dependency-aware task DAGs: blocks, parent-child relationships
+    Ready-work computation: transitive blocking resolution for unblocked tasks
+    Molecules: workflow templates that generate coordinated task graphs
+    Gates: async coordination primitives (human approval, timer, CI events)
 ```
 
 ### Competitive Differentiation
@@ -1268,14 +1351,18 @@ v2.0.0 -- ForgeManager & Ecosystem
 |---------|------------|-----------|-------------|
 | **Runtime** | Go | Bun/TS | Bun/TS |
 | **Focus** | Session management | Swarm orchestration | Protocol-driven orchestration |
-| **Agent model** | Flat (all equal) | Hierarchical (capabilities) | Boss/worker (simple hierarchy) |
-| **Communication** | tmux send-keys | SQLite mail | tmux pipe + file log |
-| **Protocols** | None | None (ad-hoc) | Declarative YAML |
+| **Agent model** | Flat (all equal) | Hierarchical (coordinator→lead→worker) | Boss/worker + specialist roles |
+| **Communication** | tmux send-keys | SQLite mail (typed messages) | SQLite messages (typed, threaded) |
+| **Protocols** | None | None (ad-hoc molecules) | Declarative YAML |
+| **Task tracking** | None | Beads/Seeds (dependency DAGs) | Protocol turns + future tracker |
+| **Knowledge persistence** | None | Mulch (structured expertise) | Expertise store (mulch pattern) |
+| **Security guards** | None | PreToolUse (path, danger, capability) | PreToolUse (same pattern, v1.3.0) |
+| **Merge strategy** | None | 4-tier (clean→auto→AI→reimagine) | 4-tier (adopted, v1.5.0) |
+| **Git isolation** | None | Worktrees per agent | Worktrees (v1.5.0) |
 | **TUI** | Bubble Tea (rich) | ANSI dashboard | Ink (React-based) |
 | **Headless** | Yes (CLI) | Yes (CLI) | Yes (CLI-first) |
-| **Skill integration** | None | CLAUDE.md overlay | Protocol definitions from skills |
 | **Domain knowledge** | None | CLAUDE.md overlay | .specialist.yaml (Brain layer) |
-| **USP** | MCP management, forking | Hierarchy, worktrees | Declarative protocols + specialists |
+| **USP** | MCP management, forking | Hierarchy, worktrees, beads | Declarative protocols + specialists |
 
 **Unique selling points**:
 1. Agent Forge is the only tool that makes orchestration workflows **declarative and reusable** — you write YAML, not code.
@@ -1364,13 +1451,14 @@ specialist:
                                                        # The SKILL.md is appended after prompt.system in agents.md.
                                                        # Staleness of skill and specialist are tracked independently.
 
-  capabilities:                     # Active: enforced by PreToolUse hook at session spawn
-    file_scope:                     # Filesystem access boundaries
+  capabilities:                     # Enforced by PreToolUse security guards at session spawn (v1.3.0)
+                                    # hook-deployer.ts generates .claude/settings.local.json from these fields
+    file_scope:                     # → Path Boundary Guards: restrict Read/Write/Edit to these paths
       - mercury/database/           # read/write allowed
       - .agent-forge/sessions/      # read-only
-    blocked_tools:                  # Tools this specialist must not use
+    blocked_tools:                  # → Capability Guards: PreToolUse blocks these tools entirely
       - Bash                        # read-only specialist, no shell execution
-    can_spawn: false                # Cannot spawn sub-agents (worker, not boss)
+    can_spawn: false                # → Capability Guard: blocks agent spawning tools if false
     diagnostic_scripts:             # Executable scripts the specialist can run via Bash
       - .claude/skills/mercury-db/scripts/health_probe.py    # inherited from service skill
       - .claude/skills/mercury-db/scripts/log_hunter.py
@@ -1406,6 +1494,14 @@ agent-forge spawn gemini --specialist mercury-db-health "Check connection pools"
                   2. [Se skill_inherit presente] contenuto del SKILL.md referenziato
                   3. [Se diagnostic_scripts presente] istruzioni d'uso degli script
                   4. Istruzioni AF_STATUS
+
+              Deploy security guards (v1.3.0, hook-deployer.ts):
+                Genera .claude/settings.local.json nella sessionDir con PreToolUse hooks:
+                  - Danger guards (universali: block git push main, reset --hard, force-push)
+                  - Path boundary guards (da capabilities.file_scope)
+                  - Capability guards (da capabilities.blocked_tools)
+                  - AskUserQuestion guard (se agent non-interattivo in tmux)
+                Ordine: danger → path → capability → user hooks
 
               Spawn RpcClient:
                 new RpcClient({ provider: 'google-gemini-cli', cwd: sessionDir })
@@ -1726,17 +1822,48 @@ La pricing table è allineata con la cost hierarchy di Mercury Terminal (GLM $0.
 **Adopted**: tmux execution model, status detection via pane content, wait-for-ready pattern, session persistence.
 **Not adopted**: MCP management, Go/Bubble Tea, flat agent model.
 
-### Overstory (jayminwest/overstory)
-- TypeScript/Bun, hierarchical agent orchestration
-- Git worktrees for agent isolation
-- SQLite mail system with typed messages (semantic + protocol)
-- Watchdog daemon for health monitoring
-- Capabilities-based agent hierarchy (coordinator -> supervisor -> lead -> worker)
-- `sling` command for agent spawning with CLAUDE.md overlay
+### Overstory Ecosystem (jayminwest/overstory + beads + mulch)
 
-**Adopted (v1.0)**: SQLite for state, reconciliation concept, TypeScript/Bun runtime, CLAUDE.md overlay via session-scoped directory, typed messages table (CHECK constraint, payload JSON, priority, thread_id), stalled-agent detection (stalled_since + escalation_level).
-**Deferred to v2.0**: Git worktrees per agent (useful for file-writing workers in parallel; complexity cost deferred).
-**Not adopted**: Full capability hierarchy (boss/worker is sufficient for core use case), watchdog daemon (replaced by reconciliation loop Phases 1-3).
+Overstory is the most mature open-source agent orchestrator. It uses three integrated tools:
+- **Overstory** (`ov`): Agent orchestration — hierarchy, spawning, hooks, merge, watchdog
+- **Beads** (`bd`, steveyegge/beads): Task/issue tracking — dependency DAGs, ready-work, molecules, gates
+- **Mulch** (`mulch`, jayminwest/mulch): Knowledge persistence — structured expertise across sessions
+- **Seeds** (`sd`): Lightweight beads alternative — JSONL-only, no Dolt dependency
+
+Architecture:
+- 3-tier hierarchy: Coordinator → Lead/Supervisor → Workers (scout/builder/reviewer/merger)
+- `ov sling`: spawn agent → create git worktree → generate CLAUDE.md overlay → deploy hooks → tmux session
+- SQLite mail system with typed messages (dispatch, worker_done, merge_ready, escalation)
+- PreToolUse security guards: path boundary, danger ops, capability enforcement, AskUserQuestion blocking
+- 4-tier merge pipeline: clean → auto-resolve → AI-resolve → re-imagine (conflict patterns saved to mulch)
+- Watchdog daemon: 3-tier health (mechanical → AI triage → monitor agent)
+- Cost analysis: metrics.db from Claude Code transcript JSONL
+- TrackerClient abstraction: pluggable backends (beads vs seeds) behind unified interface
+
+**Adopted (v1.0)**: SQLite for state, reconciliation concept, TypeScript/Bun runtime, agents.md overlay
+via session-scoped directory, typed messages table (CHECK constraint, payload JSON, priority, thread_id),
+stalled-agent detection (stalled_since + escalation_level), coordinator auto-wake pattern (boss checks
+worker fleet status via reconciliation loop, auto-spawns replacements, sends escalation).
+
+**Adopted (v1.3.0)**: Security guard system — PreToolUse hooks deployed per-session enforcing path
+boundaries (file_scope), danger operation blocking, capability guards (blocked_tools), AskUserQuestion
+blocking for non-interactive workers. Guard deployment order: danger → path → capability → user hooks.
+
+**Adopted (v1.4.0)**: Mulch-style knowledge persistence — structured expertise records with classification
+(foundational/tactical/observational), shelf life, compaction, token-budgeted priming. Monitoring
+specialists use this for memory deduplication across wake cycles. JSONL storage in .agent-forge/expertise/,
+git-tracked, advisory file locking for multi-agent writes.
+
+**Adopted (v1.5.0)**: Git worktrees per agent (.agent-forge/worktrees/{name}/), worktree redirect for
+shared DB access, 4-tier merge resolution (clean→auto→AI→reimagine), conflict history intelligence
+(patterns saved to expertise store).
+
+**Adopted (v2.0.0)**: TrackerClient abstraction — pluggable task tracker backend (beads/seeds or built-in),
+dependency-aware task DAGs, ready-work computation, molecules (workflow templates), gates (async
+coordination primitives for human approval, timers, CI events).
+
+**Not adopted**: Full 3-tier hierarchy (boss/worker with specialist roles is sufficient), Dolt database
+dependency (SQLite + JSONL preferred), Go CLI tools as runtime dependencies (concepts ported to Bun/TS).
 
 ### Existing Skills (delegating + orchestrating-agents)
 - Pattern-based task routing (delegating/config.yaml)
