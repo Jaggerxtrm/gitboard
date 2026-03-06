@@ -1,3 +1,5 @@
+> **SUPERSEDED**: This document contains early ideation notes. The formal design is in [github-dashboard.md](./github-dashboard.md) (v0.7.0), integrated with the PRD v1.3.0 and dashboard-design.md.
+
 # DESCRIZIONE
 Come parte della omni-dashboard, questo è un tassello importante dell'intero progetto in quanto si collegherà al concetto di gestione di github, dei servizi, tramite gli agenti di agent-forge in modalità di monitoraggio.
 

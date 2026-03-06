@@ -1,7 +1,7 @@
 	 
 # unitAI v2 -- Specialist System Refactor
 
-> **Version 0.3.0 | DRAFT** Author: Dawid (jagger) | March 2026 Ecosystem: unitAI | Agent Forge | Mercury Terminal Aligned with Agent Forge PRD v1.2.0 and Mercury Terminal Workflow
+> **Version 0.3.0 | DRAFT** Author: Dawid (jagger) | March 2026 Ecosystem: unitAI | Agent Forge | Mercury Terminal Aligned with Agent Forge PRD v1.3.0 and Mercury Terminal Workflow
 ---
 
 ## 1. Executive Summary
@@ -283,6 +283,8 @@ specialist:
     normalize_template: string  # [Mercury] Fix output violations
     output_schema: object      # JSON Schema for output validation
     examples: object[]         # Few-shot examples
+    skill_inherit: string      # [Agent Forge] Path to service SKILL.md — appended to agents.md at spawn
+                               # Bridges specialist orchestration with service operational knowledge (PRD v1.3.0)
   # ─── SKILLS & ATTACHMENTS (all systems) ───
   skills:
     scripts:                   # Executable scripts
@@ -299,6 +301,8 @@ specialist:
     tools:                     # Named tools with purpose
       - name: string
         purpose: string
+    diagnostic_scripts:        # [Agent Forge] Executable scripts from service skills (health_probe.py, etc.)
+      - string                 # Paths documented in agents.md as available tools (PRD v1.3.0)
   # ─── COMMUNICATION (unitAI + Agent Forge) ───
   communication:
     publishes: string[]        # Event topics this specialist emits
@@ -953,7 +957,7 @@ specialist:
 ### 14.2 Related Documents
 |Document|Scope|Relationship|
 |---|---|---|
-|Agent Forge PRD v1.2.0|Full orchestrator spec|unitAI provides foundation; Forge extends with tmux/protocols|
+|Agent Forge PRD v1.3.0|Full orchestrator spec|unitAI provides foundation; Forge extends with tmux/protocols; v1.3.0 adds skill_inherit, diagnostic_scripts, GitHub dashboard|
 |Mercury Terminal Workflow|Domain product spec|Uses Forge as infra; defines domain specialists|
 |Mercury Terminal Interface|UX/TUI spec|Client-facing; consumes specialist outputs|
 |Specialist System SSOT (darth_feedor)|Original Python implementation|unitAI ports this to TypeScript; YAML format origin|

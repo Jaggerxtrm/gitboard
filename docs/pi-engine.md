@@ -219,27 +219,50 @@ async function spawnWithSpecialist(
   const sessionDir = path.join(AF_SESSIONS_DIR, sessionId);
   await fs.mkdir(sessionDir, { recursive: true });
 
-  // 1. Inietta system prompt dello specialist come agents.md
+  // 1. Componi agents.md: system prompt + skill_inherit + diagnostic_scripts
+  let agentsMd = specialist.prompt.system;
+
+  // 2. Se skill_inherit presente, appendi il SKILL.md del servizio
+  if (specialist.prompt.skill_inherit) {
+    const skillContent = await fs.readFile(specialist.prompt.skill_inherit, 'utf-8');
+    agentsMd += '\n\n---\n# Service Knowledge (inherited from SKILL.md)\n\n' + skillContent;
+  }
+
+  // 3. Se diagnostic_scripts presente, documenta gli script disponibili
+  if (specialist.capabilities?.diagnostic_scripts?.length) {
+    agentsMd += '\n\n---\n# Diagnostic Scripts\nYou have access to the following diagnostic scripts via Bash:\n';
+    for (const script of specialist.capabilities.diagnostic_scripts) {
+      agentsMd += `- \`${script}\`\n`;
+    }
+  }
+
   await fs.writeFile(
     path.join(sessionDir, 'agents.md'),
-    specialist.prompt.system
+    agentsMd
   );
 
-  // 2. Crea client con cwd = sessionDir (pi carica agents.md in automatico)
+  // 4. Crea client con cwd = sessionDir (pi carica agents.md in automatico)
   const pi = new RpcClient({ provider, cwd: sessionDir });
   await pi.start();
 
-  // 3. Invia il task renderizzato (task_template con $query sostituito)
+  // 5. Invia il task renderizzato (task_template con $query sostituito)
   await pi.prompt(renderTaskTemplate(specialist, userTask));
 
   return pi;
 }
 ```
 
+**Contenuto di agents.md (in ordine):**
+1. `prompt.system` dello specialist
+2. `skill_inherit` SKILL.md (se presente) — conoscenza operativa del servizio
+3. `diagnostic_scripts` istruzioni (se presenti) — script eseguibili via Bash
+4. Istruzioni AF_STATUS (aggiunte dal boss)
+
 **Vantaggi rispetto a CLAUDE.md approach:**
 - Funziona con tutti i provider (non solo Claude)
 - `agents.md` è la convenzione nativa di pi — zero workaround
 - Persiste per tutta la sessione, non va re-iniettato ad ogni messaggio
+- `skill_inherit` evita duplicazione tra specialist YAML e service SKILL.md
 
 ### execution.mode e context injection
 

@@ -85,6 +85,7 @@ src/api/
 | `output:{id}` | new_lines (streaming pane capture) | Agent output viewer |
 | `messages` | new_message (from any session) | Message feed |
 | `protocol:{id}` | turn_start, turn_complete, turn_error | Protocol monitor |
+| `github:activity` | new_event, new_commits (on poller ingestion) | GitHub panel (v0.7.0) |
 | `system` | reconciliation_tick, health_check | Status bar |
 
 ### 2.2 Dashboard Frontend
@@ -647,7 +648,15 @@ Add the API layer as the TUI is being built. This ensures both UIs share the sam
 - Mobile-optimized layout
 - Protocol Runner wizard (start protocols from Dashboard)
 
-### Phase 3.5: GitHub Activity Panel (v0.7.0)
+### Phase 4: Advanced Features (v0.6.0 — alongside Protocol Runner)
+
+- Approval workflows (boss requests → Dashboard approves)
+- Notification system (browser push for stalled/zombie/completed)
+- Activity timeline (full audit trail, inspired by OpenClaw)
+- Dashboard themes (light/dark)
+- Multi-session overview (across projects)
+
+### Phase 5: GitHub Activity Panel (v0.7.0)
 
 - GitHub data layer in state.db (events, commits, repos tables)
 - github-poller.ts: periodic ingestion via GitHub REST + GraphQL API
@@ -657,20 +666,12 @@ Add the API layer as the TUI is being built. This ensures both UIs share the sam
 - Configuration: github.* section in config.yaml
 - See: [github-dashboard.md](./github-dashboard.md)
 
-### Phase 3.7: Service Health Prep (v0.8.0)
+### Phase 6: Service Health Prep (v0.8.0)
 
 - GitHub Actions workflow run tracking
 - Prometheus query proxy for metric access
 - Service health table + ServicePanel stub
 - Correlation engine: GitHub deploy timestamps vs service health changes
-
-### Phase 4: Advanced Features (v0.6.0+)
-
-- Approval workflows (boss requests → Dashboard approves)
-- Notification system (browser push for stalled/zombie/completed)
-- Activity timeline (full audit trail, inspired by OpenClaw)
-- Dashboard themes (light/dark)
-- Multi-session overview (across projects)
 
 ---
 
