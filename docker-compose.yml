@@ -1,0 +1,15 @@
+services:
+  agent-forge:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - data:/home/forge/.agent-forge
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - AGENT_FORGE_DB=/home/forge/.agent-forge/state.db
+      - PORT=3000
+    restart: unless-stopped
+
+volumes:
+  data:

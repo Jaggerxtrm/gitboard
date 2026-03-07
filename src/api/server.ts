@@ -25,6 +25,16 @@ export function createApp(db: Database): {
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  // Serve built dashboard in production (dist/dashboard/ present)
+  const distRoot = `${import.meta.dir}/../../dist/dashboard`;
+  app.get("*", async (c) => {
+    const pathname = new URL(c.req.url).pathname;
+    let file = Bun.file(`${distRoot}${pathname}`);
+    if (!(await file.exists())) file = Bun.file(`${distRoot}/index.html`);
+    if (!(await file.exists())) return c.text("Not found", 404);
+    return new Response(file);
+  });
+
   return { app, registry, wsHandler };
 }
 
