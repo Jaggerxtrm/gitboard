@@ -33,4 +33,24 @@ describe("StatsHeader", () => {
     const dashCount = (html.match(/>—</g) ?? []).length;
     expect(dashCount).toBe(5);
   });
+
+  it("renders as single-line bar (no column flex layout)", () => {
+    const html = renderToStaticMarkup(<StatsHeader summary={summary} />);
+    expect(html).not.toContain("flex-direction:column");
+  });
+
+  it("renders commit octicon", () => {
+    const html = renderToStaticMarkup(<StatsHeader summary={summary} />);
+    expect(html).toContain("octicon-git-commit");
+  });
+
+  it("renders pull-request octicon", () => {
+    const html = renderToStaticMarkup(<StatsHeader summary={summary} />);
+    expect(html).toContain("octicon-git-pull-request");
+  });
+
+  it("renders repo octicon", () => {
+    const html = renderToStaticMarkup(<StatsHeader summary={summary} />);
+    expect(html).toContain("octicon-repo");
+  });
 });
