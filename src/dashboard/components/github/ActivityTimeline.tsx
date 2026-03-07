@@ -281,6 +281,7 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
     getScrollElement: () => parentRef.current,
     estimateSize: (i) => items[i].kind === "header" ? 32 : 68,
     overscan: 5,
+    measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });
 
   // Fetch commits when accordion opens
@@ -356,6 +357,8 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
               return (
                 <div
                   key={item.kind === "header" ? item.key : item.event.id}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -381,7 +384,7 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
                         </Accordion.Trigger>
                       </Accordion.Header>
                       {item.event.type === "PushEvent" && (
-                        <Accordion.Content style={{ overflow: "hidden" }}>
+                        <Accordion.Content>
                           {loadingIds.has(item.event.id) ? (
                             <div style={{ padding: "8px 16px", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Loading commits…</div>
                           ) : (
