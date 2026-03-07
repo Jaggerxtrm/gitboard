@@ -76,11 +76,22 @@ function CommitRow({ commit }: { commit: GithubCommit }) {
 
   return (
     <div style={{ padding: "3px 0", fontSize: "var(--text-xs)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        onClick={hasBody ? () => setOpen(o => !o) : undefined}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          cursor: hasBody ? "pointer" : "default",
+          borderRadius: "var(--radius-xs)",
+          padding: "1px 2px",
+        }}
+      >
         <a
           href={commit.url ?? `https://github.com/${commit.repo}/commit/${commit.sha}`}
           target="_blank"
           rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
           style={{ fontFamily: "var(--font-mono)", color: "var(--accent-blue)", flexShrink: 0 }}
         >
           {commit.sha.slice(0, 7)}
@@ -89,23 +100,9 @@ function CommitRow({ commit }: { commit: GithubCommit }) {
           {subject}
         </span>
         {hasBody && (
-          <Collapsible.Root open={open} onOpenChange={setOpen}>
-            <Collapsible.Trigger
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--text-muted)",
-                padding: "0 2px",
-                flexShrink: 0,
-                lineHeight: 1,
-              }}
-              aria-label={open ? "Collapse commit body" : "Expand commit body"}
-            >
-              <span style={{ display: "inline-flex", transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }}><ChevronDownIcon size={11} /></span>
-            </Collapsible.Trigger>
-            <Collapsible.Content />
-          </Collapsible.Root>
+          <span style={{ display: "inline-flex", color: "var(--text-muted)", flexShrink: 0, transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }}>
+            <ChevronDownIcon size={11} />
+          </span>
         )}
       </div>
       {hasBody && open && (
@@ -124,7 +121,7 @@ function CommitRow({ commit }: { commit: GithubCommit }) {
           {(showAll ? commit.message_full!.split("\n").slice(1) : bodyLines).join("\n")}
           {!showAll && hiddenCount > 0 && (
             <button
-              onClick={() => setShowAll(true)}
+              onClick={(e) => { e.stopPropagation(); setShowAll(true); }}
               style={{ display: "block", marginTop: 4, background: "transparent", border: "none", color: "var(--accent-blue)", cursor: "pointer", fontSize: 10, padding: 0 }}
             >
               Show {hiddenCount} more line{hiddenCount !== 1 ? "s" : ""}
