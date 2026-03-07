@@ -4,3 +4,7 @@ dist/
 *.log
 .env
 .agent-forge/logs/
+
+# Dolt database files (added by bd init)
+.dolt/
+.worktrees/
