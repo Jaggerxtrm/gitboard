@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { insertEvent, insertCommit, upsertRepo, updateRepo } from "./github-store.ts";
+import { insertEvent, insertCommit, ensureRepo } from "./github-store.ts";
 import type { GithubEvent, GithubCommit } from "./github-store.ts";
 
 export interface RawGithubCommit {
@@ -30,6 +30,19 @@ export function getGithubToken(): string {
   throw new Error("No GitHub token found. Run `gh auth login` or set GITHUB_TOKEN.");
 }
 
+export async function getAuthenticatedUsername(token: string): Promise<string> {
+  const response = await fetch("https://api.github.com/user", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "agent-forge/0.1.0",
+    },
+  });
+  if (!response.ok) throw new Error(`GitHub API error ${response.status}: /user`);
+  const user = await response.json() as { login: string };
+  return user.login;
+}
+
 export function transformEvent(raw: RawGithubEvent): GithubEvent {
   const payload = raw.payload;
   const repo = raw.repo.name;
@@ -54,7 +67,9 @@ export function transformEvent(raw: RawGithubEvent): GithubEvent {
       const ref = payload.ref as string | undefined;
       branch = ref ? ref.replace("refs/heads/", "") : null;
       const commits = payload.commits as RawGithubCommit[] | undefined;
-      commit_count = (payload.size as number | undefined) ?? commits?.length ?? 0;
+      // Use null (not 0) when size is absent — avoids showing "0 commits" for unknown data.
+      // Genuine 0-commit pushes (branch deletions etc.) still get size=0 from the API.
+      commit_count = (payload.size as number | undefined) ?? commits?.length ?? null;
       title = commits?.[0]?.message?.split("\n")[0] ?? null;
       break;
     }
@@ -163,24 +178,36 @@ export class GithubPoller {
   }
 
   async ingestEvents(rawEvents: RawGithubEvent[]): Promise<void> {
+    let newEvents = 0;
+    let newCommits = 0;
+
     for (const raw of rawEvents) {
       const event = transformEvent(raw);
-      insertEvent(this.db, event);
+      // Auto-discover the repo so it appears in the UI without manual tracking.
+      ensureRepo(this.db, event.repo);
+      const isNew = insertEvent(this.db, event);
+      if (isNew) newEvents++;
+
       const commits = transformCommits(raw);
       for (const commit of commits) {
-        insertCommit(this.db, commit);
+        const stored = insertCommit(this.db, commit);
+        if (stored) newCommits++;
       }
+    }
+
+    if (newEvents > 0 || newCommits > 0) {
+      console.log(`[github-poller] ingested ${newEvents} new events, ${newCommits} new commits`);
     }
   }
 
-  async pollRepo(repoFullName: string): Promise<void> {
+  async pollUser(username: string): Promise<void> {
     const headers = {
       Authorization: `Bearer ${this.token}`,
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "agent-forge/0.1.0",
     };
 
-    const url = `https://api.github.com/repos/${repoFullName}/events?per_page=100`;
+    const url = `https://api.github.com/users/${username}/events?per_page=100`;
     const response = await fetch(url, { headers });
 
     if (!response.ok) {
@@ -188,7 +215,7 @@ export class GithubPoller {
       if (remaining && parseInt(remaining) < 50) {
         console.warn(`[github-poller] Rate limit low: ${remaining} requests remaining`);
       }
-      throw new Error(`GitHub API error ${response.status} for ${repoFullName}`);
+      throw new Error(`GitHub API error ${response.status} for /users/${username}/events`);
     }
 
     const remaining = response.headers.get("X-RateLimit-Remaining");
@@ -203,37 +230,47 @@ export class GithubPoller {
 
     const events: RawGithubEvent[] = await response.json();
     await this.ingestEvents(events);
-
-    updateRepo(this.db, repoFullName, { last_polled_at: new Date().toISOString() });
   }
 
-  async backfill(repoFullName: string): Promise<void> {
+  async backfill(username: string): Promise<void> {
     const headers = {
       Authorization: `Bearer ${this.token}`,
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "agent-forge/0.1.0",
     };
 
+    console.log(`[github-poller] Backfilling user events for ${username} (up to ${this.backfillPages} pages)`);
+
     for (let page = 1; page <= this.backfillPages; page++) {
-      const url = `https://api.github.com/repos/${repoFullName}/events?per_page=100&page=${page}`;
+      const url = `https://api.github.com/users/${username}/events?per_page=100&page=${page}`;
       const response = await fetch(url, { headers });
-      if (!response.ok) break;
+      if (!response.ok) {
+        console.warn(`[github-poller] Backfill page ${page} failed: ${response.status}`);
+        break;
+      }
       const events: RawGithubEvent[] = await response.json();
       if (events.length === 0) break;
+
+      const pushEvents = events.filter((e) => e.type === "PushEvent");
+      const commitCounts = pushEvents.map((e) => {
+        const c = (e.payload.commits as unknown[] | undefined)?.length ?? 0;
+        const s = (e.payload.size as number | undefined) ?? "?";
+        return `size=${s} commits_in_payload=${c}`;
+      });
+      console.log(`[github-poller] Page ${page}: ${events.length} events, ${pushEvents.length} PushEvents [${commitCounts.join(", ")}]`);
+
       await this.ingestEvents(events);
     }
   }
 
-  start(repos: string[]): void {
+  start(username: string): void {
     if (this.timer) return;
-    console.log(`[github-poller] Starting poll loop, interval=${this.intervalMs}ms, repos=${repos.length}`);
+    console.log(`[github-poller] Starting poll loop for ${username}, interval=${this.intervalMs}ms`);
     this.timer = setInterval(async () => {
-      for (const repo of repos) {
-        try {
-          await this.pollRepo(repo);
-        } catch (err) {
-          console.error(`[github-poller] Error polling ${repo}:`, err);
-        }
+      try {
+        await this.pollUser(username);
+      } catch (err) {
+        console.error(`[github-poller] Error polling user events:`, err);
       }
     }, this.intervalMs);
   }
@@ -254,26 +291,16 @@ if (import.meta.main) {
 
   // Import at runtime to avoid circular issues when running as script
   const { createDatabase } = await import("./store.ts");
-  const { getRepos } = await import("./github-store.ts");
 
   const db = createDatabase(dbPath);
-  const repos = getRepos(db)
-    .filter((r) => r.tracked)
-    .map((r) => r.full_name);
-
-  if (repos.length === 0) {
-    console.log("[github-poller] No tracked repos found. Add repos via the API or CLI.");
-    process.exit(0);
-  }
+  const username = await getAuthenticatedUsername(token);
 
   const poller = new GithubPoller(db, token, { intervalMs: 5 * 60 * 1000 });
 
-  console.log("[github-poller] Running backfill for tracked repos...");
-  for (const repo of repos) {
-    await poller.backfill(repo);
-  }
+  console.log(`[github-poller] Running backfill for user ${username}...`);
+  await poller.backfill(username);
 
-  poller.start(repos);
+  poller.start(username);
   console.log("[github-poller] Poll loop running. Ctrl+C to stop.");
 
   process.on("SIGINT", () => {

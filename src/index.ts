@@ -1,6 +1,5 @@
 import { createDatabase } from "./core/store.ts";
-import { getRepos } from "./core/github-store.ts";
-import { GithubPoller, getGithubToken } from "./core/github-poller.ts";
+import { GithubPoller, getGithubToken, getAuthenticatedUsername } from "./core/github-poller.ts";
 import { discoverAndInsert } from "./core/github-discover.ts";
 import { startServer } from "./api/server.ts";
 
@@ -14,27 +13,17 @@ startServer(db, { port: PORT });
 
 try {
   const token = getGithubToken();
-  let repos = getRepos(db)
-    .filter((r) => r.tracked)
-    .map((r) => r.full_name);
+  const username = await getAuthenticatedUsername(token);
 
-  if (repos.length === 0) {
-    console.log("[agent-forge] No tracked repos found. Running auto-discovery...");
-    repos = await discoverAndInsert(db);
-  }
+  // Auto-discover repos on first run so the DB is populated
+  await discoverAndInsert(db);
 
   const poller = new GithubPoller(db, token);
 
-  if (repos.length > 0) {
-    console.log(`[agent-forge] Backfilling ${repos.length} tracked repos...`);
-    for (const repo of repos) {
-      await poller.backfill(repo);
-    }
-    poller.start(repos);
-    console.log(`[agent-forge] GitHub poller running for ${repos.length} repos`);
-  } else {
-    console.log("[agent-forge] No tracked repos. Add repos via /api/github/repos to start polling.");
-  }
+  console.log(`[agent-forge] Backfilling events for user ${username}...`);
+  await poller.backfill(username);
+  poller.start(username);
+  console.log(`[agent-forge] GitHub poller running for ${username}`);
 
   process.on("SIGINT", () => {
     console.log("\n[agent-forge] Shutting down...");

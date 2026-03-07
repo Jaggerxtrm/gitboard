@@ -1,8 +1,14 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "bun:sqlite": fileURLToPath(new URL("tests/__mocks__/bun-sqlite.ts", import.meta.url)),
+    },
+  },
   test: {
     environment: "node",
     globals: true,
@@ -13,5 +19,10 @@ export default defineConfig({
       ["tests/dashboard/**", "happy-dom"],
     ],
     setupFiles: ["tests/dashboard/setup.ts"],
+    server: {
+      deps: {
+        external: [/^node:/],
+      },
+    },
   },
 });

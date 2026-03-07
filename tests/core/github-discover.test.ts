@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -11,6 +11,15 @@ import {
   discoverAndInsert,
   type DiscoveredRepo,
 } from "../../src/core/github-discover.ts";
+
+// Bun is not defined in Node.js Vitest workers — stub the global.
+beforeAll(() => {
+  vi.stubGlobal("Bun", { spawnSync: vi.fn() });
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
 
 const sampleRepos: DiscoveredRepo[] = [
   { full_name: "alice/recent-public", is_private: false, pushed_at: new Date().toISOString() },
@@ -124,6 +133,8 @@ describe("discoverAndInsert", () => {
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "agent-forge-test-"));
     vi.restoreAllMocks();
+    // Re-stub Bun after restoreAllMocks clears the spy
+    vi.stubGlobal("Bun", { spawnSync: vi.fn() });
   });
 
   afterEach(async () => {

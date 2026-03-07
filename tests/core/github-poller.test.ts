@@ -153,7 +153,7 @@ describe("GithubPoller", () => {
 
   it("start/stop lifecycle works without errors", () => {
     const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000 });
-    poller.start([]);
+    poller.start("testuser");
     poller.stop();
   });
 });
