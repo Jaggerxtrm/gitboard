@@ -40,7 +40,7 @@ export function createApp(db: Database): {
 
 export function startServer(db: Database, options: ServerOptions = {}): void {
   const port = options.port ?? 3000;
-  const hostname = options.hostname ?? "localhost";
+  const hostname = options.hostname ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost");
 
   const { app, wsHandler } = createApp(db);
 
