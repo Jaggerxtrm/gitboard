@@ -1,9 +1,12 @@
 .PHONY: up down build logs shell ps restart clean prune token
 
 # ── Config ──────────────────────────────────────────────────────────────────────
-COMPOSE  := docker compose
-SERVICE  := agent-forge
-TOKEN    := $(shell gh auth token 2>/dev/null)
+COMPOSE      := docker compose
+SERVICE      := agent-forge
+TOKEN        := $(shell gh auth token 2>/dev/null)
+DOCKER_HOST  ?= unix:///run/user/$(shell id -u)/podman/podman.sock
+
+export DOCKER_HOST
 
 # ── Lifecycle ───────────────────────────────────────────────────────────────────
 
