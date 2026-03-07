@@ -1,26 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 :root {
-  /* Surfaces — verbatim from LobsterBoard builder.css */
-  --bg-primary:   #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary:  #21262d;
-  --bg-hover:     #30363d;
-  --border:       #30363d;
+  /* Surfaces (GitHub dark + beadboard depth model) */
+  --surface-backdrop:   #080d12;
+  --surface-elevated:   #0d1117;
+  --surface-primary:    #0d1117;
+  --surface-secondary:  #161b22;
+  --surface-tertiary:   #21262d;
+  --surface-quaternary: #2d333b;
+  --bg-hover:           #30363d;
 
-  /* Text — verbatim from LobsterBoard builder.css */
+  /* Borders */
+  --border-subtle:  rgba(48, 54, 61, 0.7);
+  --border-default: #30363d;
+  --border-strong:  #484f58;
+
+  /* Text */
   --text-primary:   #e6edf3;
   --text-secondary: #8b949e;
   --text-muted:     #6e7681;
+  --text-disabled:  #484f58;
 
-  /* Accents — verbatim from LobsterBoard builder.css */
+  /* Accents */
   --accent-blue:   #58a6ff;
   --accent-green:  #3fb950;
   --accent-orange: #d29922;
   --accent-red:    #f85149;
   --accent-purple: #a371f7;
+  --accent-teal:   #39d353;
 
-  /* Event type colors — from github-dashboard.md §6.2 */
+  /* Event type colors */
   --event-push:        #6366f1;
   --event-pr-open:     #10b981;
   --event-pr-merge:    #8b5cf6;
@@ -32,29 +42,102 @@
   --event-branch:      #94a3b8;
   --event-social:      #78716c;
 
+  /* Status semantic */
+  --status-active:   rgba(63, 185, 80, 0.12);
+  --status-pending:  rgba(210, 153, 34, 0.12);
+  --status-blocked:  rgba(248, 81, 73, 0.12);
+  --status-inactive: rgba(110, 118, 129, 0.08);
+
   /* Diffstats */
   --diff-add: #3fb950;
   --diff-del: #f85149;
 
-  /* Structure — from LobsterBoard builder.css patterns */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --shadow-widget: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-card:   0 10px 40px rgba(0, 0, 0, 0.5);
-  --transition:    all 0.15s ease;
+  /* Shadows (beadboard layered elevation) */
+  --shadow-sm:   0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md:   0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg:   0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 14px 36px rgba(4, 8, 17, 0.45);
+
+  /* Border radius */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-pill: 9999px;
+
+  /* Spacing scale */
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  16px;
+  --spacing-lg:  24px;
+  --spacing-xl:  32px;
+  --spacing-2xl: 40px;
 
   /* Typography */
-  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  --font-ui:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-md:   15px;
+  --text-xl:   18px;
+
+  /* Transitions */
+  --transition-fast:   150ms ease-out;
+  --transition-normal: 200ms ease-out;
+  --transition:        all 150ms ease-out;
+
+  /* Layout */
+  --sidebar-width: 220px;
+  --topbar-height: 48px;
+  --detail-width:  360px;
+
+  /* Backwards-compat aliases so existing components keep working */
+  --bg-primary:    var(--surface-primary);
+  --bg-secondary:  var(--surface-secondary);
+  --bg-tertiary:   var(--surface-tertiary);
+  --border:        var(--border-default);
+  --shadow-widget: var(--shadow-sm);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* Radix accordion animations via CSS data-state (no JS animation) */
+[data-state="open"] { animation: slideDown var(--transition-fast); }
+[data-state="closed"] { animation: slideUp var(--transition-fast); }
+
+@keyframes slideDown {
+  from { height: 0; opacity: 0; }
+  to   { height: var(--radix-accordion-content-height); opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { height: var(--radix-accordion-content-height); opacity: 1; }
+  to   { height: 0; opacity: 0; }
+}
+
+/* Collapsible uses its own height var */
+.collapsible-content[data-state="open"] {
+  animation: slideDownCollapsible var(--transition-fast);
+}
+.collapsible-content[data-state="closed"] {
+  animation: slideUpCollapsible var(--transition-fast);
+}
+
+@keyframes slideDownCollapsible {
+  from { height: 0; opacity: 0; }
+  to   { height: var(--radix-collapsible-content-height); opacity: 1; }
+}
+
+@keyframes slideUpCollapsible {
+  from { height: var(--radix-collapsible-content-height); opacity: 1; }
+  to   { height: 0; opacity: 0; }
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   font-family: var(--font-ui);
-  font-size: 13px;
-  background: var(--bg-primary);
+  font-size: var(--text-base);
+  background: var(--surface-primary);
   color: var(--text-primary);
   height: 100vh;
   display: flex;
@@ -62,8 +145,13 @@ body {
   overflow: hidden;
 }
 
-/* Custom scrollbar — from LobsterBoard builder.css */
+/* Thin scrollbars with pill thumbs */
+* { scrollbar-width: thin; scrollbar-color: var(--surface-quaternary) transparent; }
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: var(--radius-sm); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--surface-quaternary);
+  border-radius: var(--radius-pill);
+}
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }

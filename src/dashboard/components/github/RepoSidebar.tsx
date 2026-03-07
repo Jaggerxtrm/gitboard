@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { RepoIcon, LinkExternalIcon, GitCommitIcon, GitMergeIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { GithubRepo, RepoStat } from "../../../../src/types/github.ts";
 
@@ -10,40 +11,56 @@ interface Props {
   onReset: () => void;
 }
 
+function sortByRecency(repos: GithubRepo[]): GithubRepo[] {
+  return [...repos].sort((a, b) => {
+    if (!a.last_polled_at && !b.last_polled_at) return 0;
+    if (!a.last_polled_at) return 1;
+    if (!b.last_polled_at) return -1;
+    return b.last_polled_at > a.last_polled_at ? 1 : -1;
+  });
+}
+
 export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset }: Props) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+
   const groups = new Map<string, GithubRepo[]>();
-  for (const repo of repos) {
+  for (const repo of sortByRecency(repos)) {
     const key = repo.group_name ?? "";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(repo);
   }
 
+  const allActive = selectedRepos.length === 0;
+
   return (
     <div style={{
-      width: 220,
-      minWidth: 220,
-      background: "var(--bg-secondary)",
-      borderRight: "1px solid var(--border)",
+      width: "var(--sidebar-width)",
+      minWidth: "var(--sidebar-width)",
+      background: "var(--surface-secondary)",
+      borderRight: "1px solid var(--border-subtle)",
       display: "flex",
       flexDirection: "column",
       overflowY: "auto",
     }}>
       <button
-        aria-pressed={selectedRepos.length === 0}
+        aria-pressed={allActive}
         onClick={onReset}
+        onMouseEnter={() => setHoveredKey("__all__")}
+        onMouseLeave={() => setHoveredKey(null)}
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          padding: "10px 12px",
-          background: selectedRepos.length === 0 ? "var(--bg-tertiary)" : "transparent",
+          gap: "var(--spacing-sm)",
+          padding: "10px 16px",
+          background: allActive ? "var(--surface-tertiary)" : hoveredKey === "__all__" ? "rgba(255,255,255,0.04)" : "transparent",
           border: "none",
-          borderLeft: selectedRepos.length === 0 ? "2px solid var(--event-push)" : "2px solid transparent",
+          borderLeft: allActive ? "2px solid var(--event-push)" : "2px solid transparent",
           color: "var(--text-primary)",
           cursor: "pointer",
-          fontSize: 13,
+          fontSize: "var(--text-base)",
           textAlign: "left",
           width: "100%",
+          transition: "var(--transition-fast)",
         }}
       >
         All Activity
@@ -55,10 +72,10 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
             <div
               role="heading"
               style={{
-                padding: "8px 12px 4px",
-                fontSize: 11,
+                padding: "8px 16px 4px",
+                fontSize: "var(--text-xs)",
                 fontWeight: 600,
-                letterSpacing: "0.5px",
+                letterSpacing: "0.05em",
                 color: "var(--text-muted)",
                 textTransform: "uppercase",
               }}
@@ -78,27 +95,30 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                 key={repo.full_name}
                 aria-pressed={isSelected}
                 onClick={() => onSelect(repo.full_name)}
+                onMouseEnter={() => setHoveredKey(repo.full_name)}
+                onMouseLeave={() => setHoveredKey(null)}
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: 4,
-                  padding: "8px 12px",
-                  background: isSelected ? "var(--bg-tertiary)" : "transparent",
+                  padding: "8px 16px",
+                  background: isSelected ? "var(--surface-tertiary)" : hoveredKey === repo.full_name ? "rgba(255,255,255,0.04)" : "transparent",
                   border: "none",
                   borderLeft: isSelected ? "2px solid var(--event-push)" : "2px solid transparent",
                   color: "var(--text-primary)",
                   cursor: "pointer",
-                  fontSize: 13,
+                  fontSize: "var(--text-base)",
                   textAlign: "left",
                   width: "100%",
+                  transition: "var(--transition-fast)",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {isUnread && (
                     <span style={{
-                      width: 3,
-                      height: 3,
-                      borderRadius: "50%",
+                      width: 6,
+                      height: 6,
+                      borderRadius: "var(--radius-pill)",
                       background: "var(--accent-blue)",
                       flexShrink: 0,
                     }} />
@@ -118,7 +138,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                   </a>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-secondary)", paddingLeft: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-xs)", color: "var(--text-secondary)", paddingLeft: 20 }}>
                   {stat ? (
                     <>
                       {stat.pushes > 0 && (

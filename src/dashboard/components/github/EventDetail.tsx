@@ -1,3 +1,5 @@
+import { useState } from "react";
+import * as Collapsible from "@radix-ui/react-collapsible";
 import { RepoIcon, GitBranchIcon, LinkExternalIcon } from "@primer/octicons-react";
 import type { GithubEvent, GithubCommit } from "../../../../src/types/github.ts";
 
@@ -19,6 +21,65 @@ function getEventColor(type: string): string {
   return EVENT_COLORS[type] ?? "var(--text-muted)";
 }
 
+const BODY_LINE_CAP = 20;
+
+function CommitRow({ commit }: { commit: GithubCommit }) {
+  const [open, setOpen] = useState(false);
+  const fullMsg = commit.message_full ?? commit.message;
+  const lines = fullMsg.split("\n");
+  const subject = lines[0];
+  const bodyRaw = lines.slice(1).join("\n").trim();
+  const bodyLines = bodyRaw.split("\n");
+  const hasBody = bodyRaw.length > 0;
+  const cappedBody = bodyLines.slice(0, BODY_LINE_CAP).join("\n");
+  const overflow = bodyLines.length - BODY_LINE_CAP;
+
+  return (
+    <Collapsible.Root open={open} onOpenChange={setOpen} style={{ marginBottom: 8, fontSize: "var(--text-base)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <a
+          href={commit.url ?? `https://github.com/${commit.repo}/commit/${commit.sha}`}
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", color: "var(--accent-blue)", flexShrink: 0 }}
+        >
+          {commit.sha.slice(0, 7)}
+        </a>
+        <span style={{ color: "var(--text-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {subject}
+        </span>
+        {hasBody && (
+          <Collapsible.Trigger style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "var(--text-sm)", flexShrink: 0 }}>
+            {open ? "▾" : "▸"}
+          </Collapsible.Trigger>
+        )}
+      </div>
+      {hasBody && (
+        <Collapsible.Content className="collapsible-content" style={{ overflow: "hidden" }}>
+          <pre style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-xs)",
+            color: "var(--text-secondary)",
+            background: "var(--surface-tertiary)",
+            borderRadius: "var(--radius-xs)",
+            padding: "6px 8px",
+            marginTop: 4,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}>
+            {cappedBody}
+          </pre>
+          {overflow > 0 && (
+            <span style={{ fontSize: "var(--text-xs)", color: "var(--accent-blue)", cursor: "pointer" }}>
+              Show {overflow} more line{overflow !== 1 ? "s" : ""}
+            </span>
+          )}
+        </Collapsible.Content>
+      )}
+    </Collapsible.Root>
+  );
+}
+
 export function EventDetail({ event, commits }: Props) {
   if (!event) {
     return (
@@ -28,8 +89,8 @@ export function EventDetail({ event, commits }: Props) {
         justifyContent: "center",
         height: "100%",
         color: "var(--text-muted)",
-        fontSize: 13,
-        padding: 24,
+        fontSize: "var(--text-base)",
+        padding: "var(--spacing-lg)",
       }}>
         Select an event to see details.
       </div>
@@ -49,10 +110,10 @@ export function EventDetail({ event, commits }: Props) {
         display: "flex",
         alignItems: "center",
         gap: 6,
-        padding: "12px 16px",
-        borderBottom: "1px solid var(--border)",
+        padding: "12px 24px",
+        borderBottom: "1px solid var(--border-subtle)",
         flexShrink: 0,
-        fontSize: 12,
+        fontSize: "var(--text-sm)",
         color: "var(--text-secondary)",
       }}>
         <RepoIcon size={14} />
@@ -77,19 +138,19 @@ export function EventDetail({ event, commits }: Props) {
       </div>
 
       {/* Scrollable content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "16px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: "var(--spacing-md)" }}>
         {/* Event title */}
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 12 }}>
+        <div style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)" }}>
           {event.title ?? event.type}
         </div>
 
         {/* Diffstat bar */}
         {hasStats && (
-          <div style={{ marginBottom: 12 }}>
+          <div>
             <div style={{
               height: 6,
-              background: "var(--bg-tertiary)",
-              borderRadius: "var(--radius-sm)",
+              background: "var(--surface-tertiary)",
+              borderRadius: "var(--radius-xs)",
               overflow: "hidden",
               display: "flex",
               marginBottom: 4,
@@ -97,7 +158,7 @@ export function EventDetail({ event, commits }: Props) {
               <div style={{ width: `${addPct}%`, background: "var(--diff-add)" }} />
               <div style={{ width: `${delPct}%`, background: "var(--diff-del)" }} />
             </div>
-            <div style={{ display: "flex", gap: 8, fontFamily: "var(--font-mono)", fontSize: 12 }}>
+            <div style={{ display: "flex", gap: 8, fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)" }}>
               {event.additions != null && (
                 <span style={{ color: "var(--diff-add)" }}>+{event.additions}</span>
               )}
@@ -114,13 +175,12 @@ export function EventDetail({ event, commits }: Props) {
         {/* Event body */}
         {event.body && (
           <div style={{
-            background: "var(--bg-tertiary)",
+            background: "var(--surface-tertiary)",
             borderLeft: `3px solid ${eventColor}`,
-            borderRadius: "var(--radius-md)",
+            borderRadius: "var(--radius-sm)",
             padding: "10px 12px",
-            fontSize: 12,
+            fontSize: "var(--text-sm)",
             color: "var(--text-secondary)",
-            marginBottom: 16,
             whiteSpace: "pre-wrap",
           }}>
             {event.body}
@@ -131,39 +191,17 @@ export function EventDetail({ event, commits }: Props) {
         {commits.length > 0 && (
           <div>
             <div style={{
-              fontSize: 11,
+              fontSize: "var(--text-xs)",
               textTransform: "uppercase",
-              letterSpacing: "0.5px",
+              letterSpacing: "0.05em",
               color: "var(--text-muted)",
               marginBottom: 8,
             }}>
               Commits
             </div>
-            {commits.map((commit) => {
-              const fullMsg = commit.message_full ?? commit.message;
-              const subject = fullMsg.split("\n")[0];
-              const hasBody = fullMsg.includes("\n");
-              return (
-                <div key={commit.sha} style={{ marginBottom: 8, fontSize: 13 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <a
-                      href={commit.url ?? `https://github.com/${commit.repo}/commit/${commit.sha}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent-blue)" }}
-                    >
-                      {commit.sha.slice(0, 7)}
-                    </a>
-                    <span style={{ color: "var(--text-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {subject}
-                    </span>
-                    {hasBody && (
-                      <span style={{ color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>▸</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {commits.map((commit) => (
+              <CommitRow key={commit.sha} commit={commit} />
+            ))}
           </div>
         )}
 
@@ -179,12 +217,12 @@ export function EventDetail({ event, commits }: Props) {
               justifyContent: "center",
               gap: 6,
               padding: "8px 12px",
-              marginTop: 16,
-              background: "var(--bg-tertiary)",
-              border: "1px solid var(--border)",
+              marginTop: "auto",
+              background: "var(--surface-tertiary)",
+              border: "1px solid var(--border-default)",
               borderRadius: "var(--radius-md)",
               color: "var(--text-secondary)",
-              fontSize: 12,
+              fontSize: "var(--text-sm)",
               textDecoration: "none",
             }}
           >
