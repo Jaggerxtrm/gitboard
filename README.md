@@ -2,7 +2,8 @@
 
 CLI/TUI orchestrator for AI agents managing Mercury stack services (52 containers, 5 stacks).
 
-**Status:** v0.7.0 — GitHub Activity Dashboard (first omni-dashboard panel implemented)
+**Status:** v0.7.1 — GitHub Activity Dashboard with full event enrichment (Compare + PR APIs)
+**Planned rename:** → `omniforge` (see [ROADMAP.md](./ROADMAP.md))
 
 ## Tech Stack
 
@@ -11,110 +12,113 @@ CLI/TUI orchestrator for AI agents managing Mercury stack services (52 container
 | Runtime | Bun (not Node) |
 | Language | TypeScript (strict) |
 | Backend | Hono (HTTP + WebSocket), bun:sqlite |
-| Frontend | React 19, Vite 7, Tailwind CSS v4 |
+| Frontend | React 19, Vite 7, Tailwind CSS v4, Radix UI |
 | State | Zustand v5 |
 | Testing | Vitest |
+| Container | Docker / rootless Podman |
 
 ## Prerequisites
 
 - Bun v1.2+
 - GitHub CLI (`gh`) authenticated, or `GITHUB_TOKEN` env var set
+- Docker or rootless Podman (for containerized deployment)
 
 ## Quick Start
 
 ```bash
 bun install
-bun run dev           # backend (API + GitHub poller)
-bun run dev:dashboard # dashboard (separate terminal)
+bun run dev           # backend (API + GitHub poller) on :3000
+bun run dev:dashboard # dashboard HMR on :5173 (proxies /api → :3000)
 ```
 
-Dashboard at http://localhost:5173, API at http://localhost:3000.
+### Docker (recommended)
+
+```bash
+make up        # build + start (auto-resolves GITHUB_TOKEN from gh auth token)
+make logs      # follow logs
+make rebuild   # force full rebuild (no layer cache)
+make down      # stop + remove containers
+```
+
+Dashboard at `http://localhost:3000` (production build served by the API process).
 
 ## Project Structure
 
 ```
 src/
-├── core/                  # Data layer
-│   ├── store.ts           # SQLite database init (state.db)
-│   ├── github-store.ts    # GitHub data access (events, commits, repos)
-│   ├── github-poller.ts   # GitHub API ingestion loop (5-min interval)
-│   └── github-discover.ts # Repository discovery and filtering
-├── api/                   # HTTP + WebSocket server
-│   ├── server.ts          # Hono server setup
-│   ├── routes/github.ts   # REST endpoints for GitHub data
-│   └── ws/                # WebSocket channels and handler
-├── dashboard/             # React frontend
-│   ├── App.tsx
-│   ├── main.tsx
-│   ├── components/github/ # GitHub Activity panel components
-│   │   ├── GithubPanel.tsx
-│   │   ├── ActivityTimeline.tsx
-│   │   ├── CommitList.tsx
-│   │   ├── ContributionHeatmap.tsx
-│   │   ├── RepoFilter.tsx
-│   │   └── StatsHeader.tsx
-│   ├── hooks/             # useGithubActivity, useWebSocket
-│   ├── lib/               # API client, WebSocket client
-│   └── stores/            # Zustand stores
-├── types/github.ts        # Shared TypeScript types
-└── index.ts               # Entry point
-tests/                     # Mirrors src/ structure
-docs/                      # Design specifications
+├── core/                    # Data layer (no HTTP)
+│   ├── store.ts             # SQLite init, WAL mode, all 6 tables
+│   ├── github-store.ts      # GitHub CRUD: events, commits, repos, stats
+│   ├── github-poller.ts     # GitHub API ingestion + Compare/PR enrichment
+│   └── github-discover.ts   # Repo auto-discovery (gh CLI → REST fallback)
+├── api/                     # HTTP + WebSocket server (Hono)
+│   ├── server.ts            # createApp, startServer, CORS, health check
+│   ├── routes/github.ts     # 9 REST endpoints under /api/github/
+│   └── ws/                  # ChannelRegistry pub/sub, WsHandler lifecycle
+├── dashboard/               # React SPA (Vite root)
+│   ├── App.tsx              # Gradient topbar, underline tab nav
+│   ├── components/github/
+│   │   ├── GithubPanel.tsx          # Three-column layout orchestrator
+│   │   ├── ActivityTimeline.tsx     # Virtualised feed, day headers, Radix Accordion
+│   │   ├── RepoSidebar.tsx          # Repo list, unread dots, 24h stats
+│   │   ├── EventDetail.tsx          # Slide-in panel, diffstat bar, Radix Collapsible commits
+│   │   ├── ContributionHeatmap.tsx  # Radix Tooltip per cell, month/day labels
+│   │   ├── StatsHeader.tsx          # Inline metric strip
+│   │   └── EventIcon.tsx            # Octicon-per-event-type mapping
+│   ├── hooks/               # useGithubActivity, useWebSocket
+│   ├── lib/                 # ApiClient singleton, WsClient with backoff
+│   ├── stores/github.ts     # Zustand: events, commits, repos, repoStats, unreadRepos
+│   └── styles/globals.css   # CSS token system (--surface-*, --text-*, --accent-*)
+├── types/github.ts          # Shared TypeScript types
+└── index.ts                 # Entry point: DB + server + poller wired together
 ```
 
-## Scripts
+## GitHub Enrichment
 
-| Command | Description |
-|---------|-------------|
-| `bun run dev` | Start backend server |
-| `bun run dev:dashboard` | Start Vite dev server for dashboard |
-| `bun run build:dashboard` | Production build of dashboard |
-| `bun test` | Run all tests (143 tests, 16 files) |
-| `bun run typecheck` | TypeScript type checking |
+The poller fetches full event details for every new event — the raw Events API returns truncated payloads:
+
+| Event type | Additional API call | Data retrieved |
+|---|---|---|
+| `PushEvent` | `GET /repos/{owner}/{repo}/compare/{before}...{head}` | Full commit list (`message`, `message_full`), aggregate `+additions −deletions files` |
+| `PullRequestEvent` | `GET /repos/{owner}/{repo}/pulls/{number}` | `title`, `body`, `html_url`, `additions`, `deletions`, `changed_files` |
+
+Falls back to payload data if additional calls fail (private repos, rate limit).
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/github/events` | Paginated events with filters |
+| GET | `/api/github/events/:id` | Single event |
+| GET | `/api/github/commits` | Commits (filterable by `repo`, `event_id`, `from`) |
+| GET | `/api/github/commits/:sha` | Single commit |
+| GET | `/api/github/repos` | Tracked repos |
+| GET | `/api/github/repos/stats` | 24h push/PR counts per repo |
+| GET | `/api/github/contributions` | Contribution heatmap data |
+| GET | `/api/github/summary` | Aggregate stats (events/pushes/PRs/commits/repos) |
+
+## Commands
+
+```bash
+bun run dev           # API server + poller
+bun run dev:dashboard # Vite HMR
+bun run lint          # TypeScript type check
+bun run test          # Vitest (all tests, one-shot)
+bun run test:watch    # Vitest watch mode
+bun run build:dashboard # Production build → dist/dashboard/
+```
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GITHUB_TOKEN` | GitHub API token (alternative to `gh auth`) | — |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite database path |
+| `PORT` | `3000` | API server port |
+| `GITHUB_TOKEN` | (from `gh auth token`) | GitHub API auth |
 
-## Tests
+## Reference
 
-```bash
-bun test           # run all 143 tests
-bun run test:watch # watch mode
-```
-
-Tests cover the full stack: SQLite store, GitHub poller, API routes, WebSocket channels, Zustand stores, and React components (via react-dom/server SSR rendering).
-
-## Next Phases
-
-| Phase | Version | What |
-|-------|---------|------|
-| Service Health Prep | v0.8.0 | Prometheus proxy, service health table, correlation engine |
-| Production Release | v1.0.0 | CI/CD, npm publish, migration guide |
-| Hooks & Security Guards | v1.3.0 | PreToolUse guards (path boundary, danger, capability, AskUserQuestion blocking) |
-| Proactive Specialists | v1.4.0 | Heartbeat system, specialist knowledge persistence (mulch pattern) |
-| Autonomous Operations | v1.5.0 | Git worktrees, 4-tier merge resolution, event-driven triggers, Mercury alert integration |
-
-See `docs/PRD.md` roadmap for full details.
-
-## Agent Execution (v0.3.0+)
-
-When implementing the specialist/agent execution layer, use the `AgentSession` interface defined in `docs/omni-specialist.md` §4.4. Do not couple the specialist loader directly to `@mariozechner/pi`.
-
-- **Recommended implementation**: `PiAgentSession` — thin wrapper over `@mariozechner/pi` RpcClient
-- **Qwen backend**: use `provider: 'openai'` with `baseURL: https://dashscope.aliyuncs.com/compatible-mode/v1`, read OAuth token from `~/.qwen/oauth_creds.json`. See `docs/pi-engine.md` §7.1.
-
-## Documentation
-
-- [docs/PRD.md](docs/PRD.md) — Full product requirements (authority)
-- [docs/github-dashboard.md](docs/github-dashboard.md) — GitHub Activity Dashboard spec
-- [docs/dashboard-design.md](docs/dashboard-design.md) — Omni-Dashboard shell
-- [docs/pi-engine.md](docs/pi-engine.md) — Pi RPC execution layer
-- [docs/omni-specialist.md](docs/omni-specialist.md) — Specialist YAML schema (§4.4: AgentSession)
-- [docs/ecosystem-alignment-delta.md](docs/ecosystem-alignment-delta.md) — Cross-system alignment decisions
-
-## License
-
-Private — not yet published.
+- [`CHANGELOG.md`](./CHANGELOG.md) — version history
+- [`ROADMAP.md`](./ROADMAP.md) — planned improvements (v0.7.2 UX overhaul, v0.8.0 multi-panel)
+- `docs/` — full specs: `PRD.md`, `github-dashboard.md`, `dashboard-design.md`
