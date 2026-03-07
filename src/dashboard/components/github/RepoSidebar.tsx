@@ -13,6 +13,7 @@ interface Props {
   onSelect: (fullName: string) => void;
   onReset: () => void;
   lastEventAt?: Record<string, string>;
+  ownerUsername?: string | null;
   contributions?: ContributionDay[];
   onDateClick?: (date: string) => void;
   selectedEvent?: GithubEvent | null;
@@ -46,10 +47,11 @@ export function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
-export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
+export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, ownerUsername = null, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
-  const sorted = sortByLastEvent(repos, lastEventAt);
+  const ownRepos = ownerUsername ? repos.filter((r) => r.full_name.startsWith(ownerUsername + "/")) : repos;
+  const sorted = sortByLastEvent(ownRepos, lastEventAt);
 
   const groups = new Map<string, GithubRepo[]>();
   for (const repo of sorted) {

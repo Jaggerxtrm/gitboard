@@ -36,7 +36,8 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
   const ownEvents = events.filter((e) => !SOCIAL_TYPES.has(e.type));
   const socialEvents = events.filter((e) => SOCIAL_TYPES.has(e.type));
 
-  // Derive last own-activity timestamp per repo for sidebar sorting
+  // Derive owner username + last own-activity timestamp per repo for sidebar
+  const ownerUsername = ownEvents[0]?.actor ?? null;
   const lastEventAt: Record<string, string> = {};
   for (const evt of ownEvents) {
     if (!lastEventAt[evt.repo] || evt.created_at > lastEventAt[evt.repo]) {
@@ -80,6 +81,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         selectedRepos={filter.repos ?? []}
         unreadRepos={unreadRepos}
         lastEventAt={lastEventAt}
+        ownerUsername={ownerUsername}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
       />
