@@ -49,6 +49,20 @@ export function relativeTime(iso: string): string {
 
 export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, ownerUsername = null, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [width, setWidth] = useState(240);
+
+  function handleResizeMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    const onMove = (ev: MouseEvent) => setWidth(Math.max(160, Math.min(480, startW + ev.clientX - startX)));
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
 
   const ownRepos = ownerUsername ? repos.filter((r) => r.full_name.startsWith(ownerUsername + "/")) : repos;
   const sorted = sortByLastEvent(ownRepos, lastEventAt);
@@ -64,14 +78,30 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
 
   return (
     <div style={{
-      width: "var(--sidebar-width)",
-      minWidth: "var(--sidebar-width)",
+      width,
+      minWidth: width,
+      maxWidth: width,
       background: "var(--surface-secondary)",
       borderRight: "1px solid var(--border-subtle)",
       display: "flex",
       flexDirection: "column",
       overflow: "hidden",
+      position: "relative",
+      flexShrink: 0,
     }}>
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleResizeMouseDown}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 4,
+          cursor: "col-resize",
+          zIndex: 10,
+        }}
+      />
       {/* Scrollable repo list */}
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <button
