@@ -49,15 +49,7 @@ export function relativeTime(iso: string): string {
 export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
-  let sorted = sortByLastEvent(repos, lastEventAt);
-
-  // Hide zero-activity repos when list exceeds 20
-  if (sorted.length > 20) {
-    sorted = sorted.filter((r) => {
-      const stat = stats[r.full_name];
-      return stat && (stat.pushes > 0 || stat.prs_open > 0 || stat.prs_closed > 0);
-    });
-  }
+  const sorted = sortByLastEvent(repos, lastEventAt);
 
   const groups = new Map<string, GithubRepo[]>();
   for (const repo of sorted) {
