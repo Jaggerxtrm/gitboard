@@ -3,8 +3,6 @@ import { useGithubActivity } from "../../hooks/useGithubActivity.ts";
 import { StatsHeader } from "./StatsHeader.tsx";
 import { RepoSidebar } from "./RepoSidebar.tsx";
 import { ActivityTimeline } from "./ActivityTimeline.tsx";
-import { EventDetail } from "./EventDetail.tsx";
-import { ContributionHeatmap } from "./ContributionHeatmap.tsx";
 import { apiClient } from "../../lib/client.ts";
 import type { GithubEvent } from "../../../types/github.ts";
 
@@ -41,8 +39,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     }
   }
 
-  const detailOpen = selectedEvent !== null;
-
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "var(--text-base)" }}>
@@ -61,7 +57,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* Left: Repo Sidebar */}
+      {/* Left: Repo Sidebar — includes inline event detail + heatmap at bottom */}
       <RepoSidebar
         repos={repos}
         stats={repoStats}
@@ -69,12 +65,15 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         unreadRepos={unreadRepos}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
+        selectedEvent={selectedEvent}
+        selectedEventCommits={selectedEventCommits}
+        contributions={contributions}
+        onDateClick={(d) => setFilter({ from: d, to: d })}
       />
 
-      {/* Center: Activity Feed */}
+      {/* Center: Activity Timeline (full remaining width) */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <StatsHeader summary={summary} />
-        <ContributionHeatmap contributions={contributions} onDateClick={(d) => setFilter({ from: d, to: d })} />
         <div style={{ flex: 1, minHeight: 0 }}>
           <ActivityTimeline
             events={events}
@@ -82,19 +81,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
             onSelect={(evt) => void handleSelectEvent(evt)}
           />
         </div>
-      </div>
-
-      {/* Right: Event Detail — CSS width transition */}
-      <div style={{
-        width: detailOpen ? "var(--detail-width)" : 0,
-        minWidth: 0,
-        overflow: "hidden",
-        borderLeft: detailOpen ? "1px solid var(--border-subtle)" : "none",
-        background: "var(--surface-secondary)",
-        transition: "width var(--transition-fast)",
-        flexShrink: 0,
-      }}>
-        <EventDetail event={selectedEvent} commits={selectedEventCommits} />
       </div>
     </div>
   );

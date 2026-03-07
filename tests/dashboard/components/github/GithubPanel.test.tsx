@@ -50,4 +50,14 @@ describe("GithubPanel (SSR)", () => {
     const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
     expect(html).toContain("All Activity");
   });
+
+  it("does not render a sliding right detail panel", () => {
+    const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
+    expect(html).not.toContain("--detail-width");
+  });
+
+  it("renders contribution heatmap relocated to sidebar", () => {
+    const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
+    expect(html.toLowerCase()).toContain("no contribution data");
+  });
 });

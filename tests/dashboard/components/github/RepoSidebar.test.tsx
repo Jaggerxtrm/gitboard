@@ -90,4 +90,35 @@ describe("RepoSidebar", () => {
     );
     expect(html).toContain("no activity today");
   });
+
+  it("renders contribution heatmap empty state in sidebar when contributions passed", () => {
+    const html = renderToStaticMarkup(
+      <RepoSidebar repos={repos} stats={stats} selectedRepos={[]} onSelect={noop} onReset={noop}
+        contributions={[]} onDateClick={noop} />
+    );
+    expect(html.toLowerCase()).toContain("no contribution data");
+  });
+
+  it("renders Select an event placeholder in sidebar when selectedEvent is null", () => {
+    const html = renderToStaticMarkup(
+      <RepoSidebar repos={repos} stats={stats} selectedRepos={[]} onSelect={noop} onReset={noop}
+        selectedEvent={null} selectedEventCommits={[]} />
+    );
+    expect(html.toLowerCase()).toContain("select an event");
+  });
+
+  it("renders event title in sidebar when selectedEvent is provided", () => {
+    const evt = {
+      id: "evt-1", type: "PushEvent", repo: "owner/api", branch: "main",
+      actor: "user1", action: null, title: "Push to main", body: null,
+      url: "https://github.com/owner/api/commit/abc",
+      additions: 10, deletions: 2, changed_files: 3, commit_count: 1,
+      created_at: new Date().toISOString(),
+    } as import("../../../../src/types/github.ts").GithubEvent;
+    const html = renderToStaticMarkup(
+      <RepoSidebar repos={repos} stats={stats} selectedRepos={[]} onSelect={noop} onReset={noop}
+        selectedEvent={evt} selectedEventCommits={[]} />
+    );
+    expect(html).toContain("Push to main");
+  });
 });
