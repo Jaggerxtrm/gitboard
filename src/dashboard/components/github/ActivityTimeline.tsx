@@ -140,12 +140,13 @@ interface EventRowProps {
   evt: GithubEvent;
   selected: boolean;
   hovered: boolean;
+  expanded?: boolean;
   onSelect: (e: GithubEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }
 
-function EventRow({ evt, selected, hovered, onSelect, onMouseEnter, onMouseLeave }: EventRowProps) {
+function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseEnter, onMouseLeave }: EventRowProps) {
   const color = eventColor(evt.type, evt.action);
   const hasDiff = evt.additions != null || evt.deletions != null;
 
@@ -216,7 +217,7 @@ function EventRow({ evt, selected, hovered, onSelect, onMouseEnter, onMouseLeave
             </span>
           )}
           {evt.type === "PushEvent" && (
-            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>
+            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", display: "inline-flex", transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }}>
               <ChevronDownIcon size={12} />
             </span>
           )}
@@ -284,21 +285,18 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });
 
-  // Fetch commits when accordion opens
-  const handleAccordionChange = useCallback(async (openIds: string[]) => {
-    setExpandedIds(openIds);
-    for (const evtId of openIds) {
-      if (commitCache.has(evtId) || loadingIds.has(evtId)) continue;
-      setLoadingIds(prev => new Set([...prev, evtId]));
-      try {
-        const res = await apiClient.getCommits(undefined, undefined, evtId);
-        setCommitCache(prev => new Map([...prev, [evtId, res.data]]));
-      } catch {
-        setCommitCache(prev => new Map([...prev, [evtId, []]]));
-      } finally {
-        setLoadingIds(prev => { const n = new Set(prev); n.delete(evtId); return n; });
-      }
-    }
+  // Toggle commit accordion and fetch if needed
+  const handleAccordionChange = useCallback((evtId: string) => {
+    setExpandedIds(prev => {
+      if (prev.includes(evtId)) return prev.filter(id => id !== evtId);
+      return [...prev, evtId];
+    });
+    if (commitCache.has(evtId) || loadingIds.has(evtId)) return;
+    setLoadingIds(prev => new Set([...prev, evtId]));
+    apiClient.getCommits(undefined, undefined, evtId)
+      .then(res => setCommitCache(prev => new Map([...prev, [evtId, res.data]])))
+      .catch(() => setCommitCache(prev => new Map([...prev, [evtId, []]])))
+      .finally(() => setLoadingIds(prev => { const n = new Set(prev); n.delete(evtId); return n; }));
   }, [commitCache, loadingIds]);
 
   // Keyboard navigation
@@ -350,7 +348,6 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
       )}
 
       <div ref={parentRef} style={{ overflow: "auto", flex: 1 }} role="table">
-        <Accordion.Root type="multiple" value={expandedIds} onValueChange={handleAccordionChange}>
           <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: "relative" }}>
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const item = items[virtualRow.index];
@@ -370,21 +367,21 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
                   {item.kind === "header" ? (
                     <DayHeader label={item.label} />
                   ) : (
-                    <Accordion.Item value={item.event.id} style={{ listStyle: "none" }}>
-                      <Accordion.Header>
-                        <Accordion.Trigger asChild>
-                          <EventRow
-                            evt={item.event}
-                            selected={item.event.id === selectedId}
-                            hovered={hoveredId === item.event.id}
-                            onSelect={onSelect}
-                            onMouseEnter={() => setHoveredId(item.event.id)}
-                            onMouseLeave={() => setHoveredId(null)}
-                          />
-                        </Accordion.Trigger>
-                      </Accordion.Header>
-                      {item.event.type === "PushEvent" && (
-                        <Accordion.Content>
+                    <div>
+                      <EventRow
+                        evt={item.event}
+                        selected={item.event.id === selectedId}
+                        hovered={hoveredId === item.event.id}
+                        expanded={expandedIds.includes(item.event.id)}
+                        onSelect={(evt) => {
+                          onSelect(evt);
+                          if (evt.type === "PushEvent") handleAccordionChange(item.event.id);
+                        }}
+                        onMouseEnter={() => setHoveredId(item.event.id)}
+                        onMouseLeave={() => setHoveredId(null)}
+                      />
+                      {item.event.type === "PushEvent" && expandedIds.includes(item.event.id) && (
+                        <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
                           {loadingIds.has(item.event.id) ? (
                             <div style={{ padding: "8px 16px", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Loading commits…</div>
                           ) : (
@@ -394,15 +391,14 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
                               ))}
                             </div>
                           )}
-                        </Accordion.Content>
+                        </div>
                       )}
-                    </Accordion.Item>
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
-        </Accordion.Root>
       </div>
     </div>
   );
