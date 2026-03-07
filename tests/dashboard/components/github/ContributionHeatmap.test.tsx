@@ -33,6 +33,23 @@ describe("ContributionHeatmap", () => {
     expect(cellCount).toBe(3);
   });
 
+  it("renders month abbreviation when contributions span a month boundary", () => {
+    const crossMonthDays: ContributionDay[] = [
+      { date: "2026-01-31", count: 3 },
+      { date: "2026-02-01", count: 1 },
+      { date: "2026-02-02", count: 2 },
+      { date: "2026-02-03", count: 0 },
+      { date: "2026-02-04", count: 1 },
+      { date: "2026-02-05", count: 2 },
+      { date: "2026-02-06", count: 3 },
+      { date: "2026-02-07", count: 1 },
+    ];
+    const html = renderToStaticMarkup(
+      <ContributionHeatmap contributions={crossMonthDays} onDateClick={() => {}} />
+    );
+    expect(html).toMatch(/Jan|Feb/);
+  });
+
   it("uses darker style for zero-count cells", () => {
     const html = renderToStaticMarkup(<ContributionHeatmap contributions={days} onDateClick={() => {}} />);
     expect(html).toContain("bg-slate-800");

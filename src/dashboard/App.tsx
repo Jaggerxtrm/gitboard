@@ -11,29 +11,37 @@ export function App() {
   const [activeTab, setActiveTab] = useState<Tab>("github");
 
   return (
-    <div className="flex flex-col h-screen bg-slate-900 text-slate-200 font-sans">
-      <header className="shrink-0 flex items-center gap-1 px-4 py-2 border-b border-slate-800 bg-slate-900">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest mr-4">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '12px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
           Agent Forge
         </span>
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-3 py-1 text-sm rounded transition-colors ${
-              activeTab === tab.id
-                ? "bg-slate-700 text-slate-100"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <nav style={{ display: 'flex', gap: 4 }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '6px 12px',
+                fontSize: 13,
+                fontWeight: 500,
+                color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: activeTab === tab.id ? '2px solid var(--accent-blue)' : '2px solid transparent',
+                cursor: 'pointer',
+                transition: 'var(--transition)',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </header>
-
-      <main className="flex-1 min-h-0">
+      <main style={{ flex: 1, minHeight: 0 }}>
         {activeTab === "github" && <GithubPanel />}
       </main>
     </div>
   );
 }
+

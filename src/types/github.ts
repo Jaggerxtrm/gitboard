@@ -22,6 +22,7 @@ export interface GithubCommit {
   branch: string | null;
   author: string;
   message: string;
+  message_full?: string | null;
   url: string | null;
   additions: number | null;
   deletions: number | null;
@@ -50,6 +51,17 @@ export interface Summary {
   prs: number;
   commits: number;
   repos: number;
+}
+
+export interface RepoStat {
+  full_name: string;
+  pushes: number;
+  prs_open: number;
+  prs_closed: number;
+}
+
+export interface RepoStatsResponse {
+  data: RepoStat[];
 }
 
 export interface EventsResponse {

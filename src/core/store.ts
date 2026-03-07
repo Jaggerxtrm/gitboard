@@ -133,5 +133,11 @@ CREATE INDEX IF NOT EXISTS idx_gh_repos_group ON github_repos(group_name);
 export function createDatabase(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec(SCHEMA);
+  // Idempotent migration — message_full lazy enrichment column
+  try {
+    db.exec("ALTER TABLE github_commits ADD COLUMN message_full TEXT");
+  } catch {
+    // Column already exists — safe to ignore
+  }
   return db;
 }

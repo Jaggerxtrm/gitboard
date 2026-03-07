@@ -235,6 +235,28 @@ describe("GET /api/github/summary", () => {
   });
 });
 
+describe("GET /api/github/repos/stats", () => {
+  it("returns per-repo stats array", async () => {
+    const res = await req("/api/github/repos/stats");
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.data)).toBe(true);
+  });
+
+  it("each stat has full_name, pushes, prs_open, prs_closed", async () => {
+    const res = await req("/api/github/repos/stats");
+    const json = await res.json();
+    // repo-a had a push event and is the only active repo in last 24h if we adjust dates
+    // at minimum the shape must be correct for any entries returned
+    json.data.forEach((s: Record<string, unknown>) => {
+      expect(s).toHaveProperty("full_name");
+      expect(s).toHaveProperty("pushes");
+      expect(s).toHaveProperty("prs_open");
+      expect(s).toHaveProperty("prs_closed");
+    });
+  });
+});
+
 describe("GET /health", () => {
   it("returns ok", async () => {
     const res = await req("/health");

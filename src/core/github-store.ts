@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { RepoStat } from "../types/github.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyParams = any;
@@ -26,6 +27,7 @@ export interface GithubCommit {
   branch: string | null;
   author: string;
   message: string;
+  message_full?: string | null;
   url: string | null;
   additions: number | null;
   deletions: number | null;
@@ -76,8 +78,8 @@ export interface Summary {
   prs: number;
 }
 
-export function insertEvent(db: Database, event: GithubEvent): void {
-  db.prepare(
+export function insertEvent(db: Database, event: GithubEvent): boolean {
+  const result = db.prepare(
     `INSERT OR IGNORE INTO github_events
       (id, type, repo, branch, actor, action, title, body, url,
        additions, deletions, changed_files, commit_count, created_at)
@@ -99,10 +101,13 @@ export function insertEvent(db: Database, event: GithubEvent): void {
     $commit_count: event.commit_count,
     $created_at: event.created_at,
   } as AnyParams);
+  // bun:sqlite returns { changes: number }, node:sqlite shim returns { changes: bigint }
+  const changes = (result as unknown as { changes: number | bigint }).changes;
+  return Number(changes) > 0;
 }
 
-export function insertCommit(db: Database, commit: GithubCommit): void {
-  db.prepare(
+export function insertCommit(db: Database, commit: GithubCommit): boolean {
+  const result = db.prepare(
     `INSERT OR IGNORE INTO github_commits
       (sha, repo, branch, author, message, url,
        additions, deletions, changed_files, event_id, committed_at)
@@ -121,6 +126,8 @@ export function insertCommit(db: Database, commit: GithubCommit): void {
     $event_id: commit.event_id,
     $committed_at: commit.committed_at,
   } as AnyParams);
+  const changes = (result as unknown as { changes: number | bigint }).changes;
+  return Number(changes) > 0;
 }
 
 export function upsertRepo(db: Database, repo: GithubRepo): void {
@@ -142,6 +149,16 @@ export function upsertRepo(db: Database, repo: GithubRepo): void {
     $last_polled_at: repo.last_polled_at,
     $color: repo.color,
   } as AnyParams);
+}
+
+// Auto-discover a repo from an event. INSERT OR IGNORE so it never overwrites
+// the user's tracked/group/color settings if the repo already exists.
+export function ensureRepo(db: Database, fullName: string): void {
+  const displayName = fullName.split("/")[1] ?? fullName;
+  db.prepare(
+    `INSERT OR IGNORE INTO github_repos (full_name, display_name, tracked)
+     VALUES ($full_name, $display_name, 1)`
+  ).run({ $full_name: fullName, $display_name: displayName } as AnyParams);
 }
 
 export function updateRepo(
@@ -268,6 +285,51 @@ export function getCommit(db: Database, sha: string): GithubCommit | null {
 
 export function getRepos(db: Database): GithubRepo[] {
   return db.query<GithubRepo, never[]>("SELECT * FROM github_repos ORDER BY full_name").all();
+}
+
+export function isTruncated(msg: string): boolean {
+  return msg.length >= 70 && !msg.includes('\n');
+}
+
+export function updateCommitFullMessage(db: Database, sha: string, fullMessage: string): void {
+  db.prepare("UPDATE github_commits SET message_full = ? WHERE sha = ?").run(fullMessage, sha);
+}
+
+export function getRepoStats(db: Database): RepoStat[] {
+  return db.query<RepoStat, []>(`
+    SELECT
+      repo AS full_name,
+      COUNT(CASE WHEN type = 'PushEvent' THEN 1 END) AS pushes,
+      COUNT(CASE WHEN type = 'PullRequestEvent' AND action = 'opened' THEN 1 END) AS prs_open,
+      COUNT(CASE WHEN type = 'PullRequestEvent' AND action IN ('closed', 'merged') THEN 1 END) AS prs_closed
+    FROM github_events
+    WHERE created_at > datetime('now', '-24 hours')
+    GROUP BY repo
+  `).all();
+}
+
+export async function enrichCommitMessages(
+  db: Database,
+  commits: GithubCommit[],
+  token: string
+): Promise<void> {
+  const stale = commits.filter(c => c.message_full == null && isTruncated(c.message));
+  if (stale.length === 0) return;
+
+  await Promise.allSettled(stale.map(async (commit) => {
+    const url = `https://api.github.com/repos/${commit.repo}/commits/${commit.sha}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `token ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (!res.ok) return;
+    const data = await res.json() as { commit: { message: string } };
+    updateCommitFullMessage(db, commit.sha, data.commit.message);
+    commit.message_full = data.commit.message;
+  }));
 }
 
 export function getContributions(db: Database, weeks: number = 12): ContributionDay[] {

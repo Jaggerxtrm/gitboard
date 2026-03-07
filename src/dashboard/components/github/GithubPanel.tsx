@@ -1,9 +1,9 @@
 import { useGithubStore } from "../../stores/github.ts";
 import { useGithubActivity } from "../../hooks/useGithubActivity.ts";
 import { StatsHeader } from "./StatsHeader.tsx";
-import { RepoFilter } from "./RepoFilter.tsx";
+import { RepoSidebar } from "./RepoSidebar.tsx";
 import { ActivityTimeline } from "./ActivityTimeline.tsx";
-import { CommitList } from "./CommitList.tsx";
+import { EventDetail } from "./EventDetail.tsx";
 import { ContributionHeatmap } from "./ContributionHeatmap.tsx";
 import { apiClient } from "../../lib/client.ts";
 import type { GithubEvent } from "../../../types/github.ts";
@@ -16,6 +16,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     selectedEvent,
     selectedEventCommits,
     repos,
+    repoStats,
     contributions,
     summary,
     filter,
@@ -24,26 +25,26 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     selectEvent,
     setSelectedEventCommits,
     setFilter,
+    resetFilter,
+    clearRepoUnread,
   } = useGithubStore();
 
   async function handleSelectEvent(evt: GithubEvent) {
     selectEvent(evt);
+    clearRepoUnread(evt.repo);
     try {
-      const res = await apiClient.getCommits(evt.repo);
-      const eventCommits = res.data.filter((c) => c.event_id === evt.id);
-      setSelectedEventCommits(eventCommits);
+      const res = await apiClient.getCommits(undefined, undefined, evt.id);
+      setSelectedEventCommits(res.data);
     } catch {
       setSelectedEventCommits([]);
     }
   }
 
-  function handleDateClick(date: string) {
-    setFilter({ from: date, to: date });
-  }
+  const detailOpen = selectedEvent !== null;
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: 13 }}>
         Loading GitHub activity…
       </div>
     );
@@ -51,47 +52,47 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full text-rose-400 text-sm">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--accent-red)", fontSize: 13 }}>
         {error}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-200">
-      <div className="shrink-0 px-4 pt-3 pb-1 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-          GitHub Activity
-        </h2>
-      </div>
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* Left: Repo Sidebar */}
+      <RepoSidebar
+        repos={repos}
+        stats={repoStats}
+        selectedRepos={filter.repos ?? []}
+        onSelect={(r) => setFilter({ repos: [r] })}
+        onReset={resetFilter}
+      />
 
-      <div className="shrink-0">
+      {/* Center: Activity Feed */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <StatsHeader summary={summary} />
-      </div>
-
-      <div className="shrink-0">
-        <ContributionHeatmap contributions={contributions} onDateClick={handleDateClick} />
-      </div>
-
-      <div className="shrink-0">
-        <RepoFilter
-          repos={repos}
-          selectedRepos={filter.repos ?? []}
-          onReposChange={(r) => setFilter({ repos: r })}
-        />
-      </div>
-
-      <div className="flex flex-1 min-h-0 divide-x divide-slate-800">
-        <div className="flex-1 min-w-0">
+        <ContributionHeatmap contributions={contributions} onDateClick={(d) => setFilter({ from: d, to: d })} />
+        <div style={{ flex: 1, minHeight: 0 }}>
           <ActivityTimeline
             events={events}
             selectedId={selectedEvent?.id ?? null}
             onSelect={(evt) => void handleSelectEvent(evt)}
           />
         </div>
-        <div className="w-80 shrink-0">
-          <CommitList event={selectedEvent} commits={selectedEventCommits} />
-        </div>
+      </div>
+
+      {/* Right: Event Detail */}
+      <div style={{
+        width: detailOpen ? 360 : 0,
+        minWidth: 0,
+        overflow: "hidden",
+        borderLeft: detailOpen ? "1px solid var(--border)" : "none",
+        background: "var(--bg-secondary)",
+        transition: "width 0.15s ease",
+        flexShrink: 0,
+      }}>
+        <EventDetail event={selectedEvent} commits={selectedEventCommits} />
       </div>
     </div>
   );

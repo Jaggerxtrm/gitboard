@@ -15,12 +15,13 @@ beforeEach(() => {
   s.setLoading(false);
   s.setError(null);
   s.resetFilter();
+  s.setRepoStats([]);
 });
 
 describe("GithubPanel (SSR)", () => {
-  it("renders the panel title", () => {
+  it("renders All Activity in repo sidebar", () => {
     const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
-    expect(html.toLowerCase()).toContain("github activity");
+    expect(html).toContain("All Activity");
   });
 
   it("renders stat labels always present", () => {
@@ -45,8 +46,8 @@ describe("GithubPanel (SSR)", () => {
     expect(html.toLowerCase()).toContain("select an event");
   });
 
-  it("renders repo filter empty state when no repos", () => {
+  it("renders repo sidebar with All Activity when no repos", () => {
     const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
-    expect(html.toLowerCase()).toContain("no repos");
+    expect(html).toContain("All Activity");
   });
 });

@@ -6,6 +6,7 @@ import type {
   ContributionDay,
   Summary,
   EventFilter,
+  RepoStat,
 } from "../../types/github.ts";
 
 export interface GithubState {
@@ -18,6 +19,8 @@ export interface GithubState {
   filter: EventFilter;
   loading: boolean;
   error: string | null;
+  repoStats: Record<string, RepoStat>;
+  unreadRepos: Set<string>;
 
   setEvents: (events: GithubEvent[]) => void;
   appendEvents: (events: GithubEvent[]) => void;
@@ -32,6 +35,9 @@ export interface GithubState {
   resetFilter: () => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setRepoStats: (stats: RepoStat[]) => void;
+  markRepoUnread: (fullName: string) => void;
+  clearRepoUnread: (fullName: string) => void;
 }
 
 const defaultFilter: EventFilter = {};
@@ -46,6 +52,8 @@ export const useGithubStore = create<GithubState>((set) => ({
   filter: defaultFilter,
   loading: false,
   error: null,
+  repoStats: {},
+  unreadRepos: new Set(),
 
   setEvents: (events) => set({ events }),
 
@@ -87,4 +95,18 @@ export const useGithubStore = create<GithubState>((set) => ({
   setLoading: (loading) => set({ loading }),
 
   setError: (error) => set({ error }),
+
+  setRepoStats: (stats) => set({
+    repoStats: Object.fromEntries(stats.map(s => [s.full_name, s]))
+  }),
+
+  markRepoUnread: (fullName) => set(s => ({
+    unreadRepos: new Set([...s.unreadRepos, fullName])
+  })),
+
+  clearRepoUnread: (fullName) => set(s => {
+    const next = new Set(s.unreadRepos);
+    next.delete(fullName);
+    return { unreadRepos: next };
+  }),
 }));

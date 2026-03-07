@@ -14,6 +14,8 @@ export function useGithubActivity(): void {
     setRepos,
     setContributions,
     setSummary,
+    setRepoStats,
+    markRepoUnread,
     setLoading,
     setError,
   } = useGithubStore();
@@ -22,22 +24,24 @@ export function useGithubActivity(): void {
     setLoading(true);
     setError(null);
     try {
-      const [eventsRes, reposRes, contribRes, summaryRes] = await Promise.all([
+      const [eventsRes, reposRes, contribRes, summaryRes, statsRes] = await Promise.all([
         apiClient.getEvents({ ...filter, limit: 50, offset: 0 }),
         apiClient.getRepos(),
         apiClient.getContributions(),
         apiClient.getSummary("today"),
+        apiClient.getRepoStats(),
       ]);
       setEvents(eventsRes.data);
       setRepos(reposRes.data);
       setContributions(contribRes.data);
       setSummary(summaryRes);
+      setRepoStats(statsRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  }, [filter, setEvents, setRepos, setContributions, setSummary, setLoading, setError]);
+  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError]);
 
   useEffect(() => {
     void load();
@@ -46,14 +50,19 @@ export function useGithubActivity(): void {
   const wsHandler = useCallback(
     (msg: WsMessage) => {
       if (msg.event === "new_event" && msg.data) {
-        prependEvent(msg.data as GithubEvent);
+        const event = msg.data as GithubEvent;
+        prependEvent(event);
+        markRepoUnread(event.repo);
       }
       if (msg.event === "new_commits" && msg.data) {
         const { event } = msg.data as { event: GithubEvent };
-        if (event) prependEvent(event);
+        if (event) {
+          prependEvent(event);
+          markRepoUnread(event.repo);
+        }
       }
     },
-    [prependEvent]
+    [prependEvent, markRepoUnread]
   );
 
   useWebSocket("github:activity", wsHandler);

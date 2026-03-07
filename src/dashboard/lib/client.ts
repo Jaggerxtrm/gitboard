@@ -6,6 +6,7 @@ import type {
   Summary,
   GithubRepo,
   EventFilter,
+  RepoStatsResponse,
 } from "../../types/github.ts";
 
 export class ApiClient {
@@ -56,10 +57,11 @@ export class ApiClient {
     return this.get(`/api/github/events/${encodeURIComponent(id)}`);
   }
 
-  getCommits(repo?: string, from?: string): Promise<CommitsResponse> {
+  getCommits(repo?: string, from?: string, event_id?: string): Promise<CommitsResponse> {
     const params = new URLSearchParams();
     if (repo) params.set("repo", repo);
     if (from) params.set("from", from);
+    if (event_id) params.set("event_id", event_id);
     const qs = params.toString();
     return this.get(`/api/github/commits${qs ? `?${qs}` : ""}`);
   }
@@ -82,6 +84,10 @@ export class ApiClient {
 
   getSummary(period: "today" | "week" | "month" = "today"): Promise<Summary> {
     return this.get(`/api/github/summary?period=${period}`);
+  }
+
+  getRepoStats(): Promise<RepoStatsResponse> {
+    return this.get("/api/github/repos/stats");
   }
 }
 

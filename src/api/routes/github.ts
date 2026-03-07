@@ -10,8 +10,17 @@ import {
   updateRepo,
   getContributions,
   getSummary,
+  getRepoStats,
+  enrichCommitMessages,
 } from "../../core/github-store.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
+
+function resolveToken(): string {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  const r = Bun.spawnSync(['gh', 'auth', 'token']);
+  if (r.exitCode === 0) return r.stdout.toString().trim();
+  throw new Error('No GitHub token');
+}
 
 export function createGithubRouter(db: Database, registry: ChannelRegistry): Hono {
   const app = new Hono();
@@ -48,19 +57,34 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
   });
 
   // GET /api/github/commits
-  app.get("/commits", (c) => {
+  app.get("/commits", async (c) => {
     const q = c.req.query();
     const limit = q.limit ? parseInt(q.limit, 10) : 50;
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
 
     const commits = getCommits(db, {
       repo: q.repo,
+      event_id: q.event_id,
       from: q.from,
       limit,
       offset,
     });
 
+    // Lazy-enrich truncated commit messages from GitHub API
+    try {
+      const token = resolveToken();
+      await enrichCommitMessages(db, commits, token);
+    } catch {
+      // No token or network error — return commits as-is with truncated messages
+    }
+
     return c.json({ data: commits, limit, offset });
+  });
+
+  // GET /api/github/repos/stats
+  app.get("/repos/stats", (c) => {
+    const stats = getRepoStats(db);
+    return c.json({ data: stats });
   });
 
   // GET /api/github/commits/:sha

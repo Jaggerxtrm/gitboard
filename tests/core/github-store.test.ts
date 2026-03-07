@@ -14,6 +14,9 @@ import {
   updateRepo,
   getContributions,
   getSummary,
+  getRepoStats,
+  updateCommitFullMessage,
+  isTruncated,
   type GithubEvent,
   type GithubCommit,
   type GithubRepo,
@@ -223,6 +226,93 @@ describe("github-store", () => {
         expect(c).toHaveProperty("date");
         expect(c).toHaveProperty("count");
       });
+    });
+  });
+
+  describe("getRepoStats", () => {
+    beforeEach(() => {
+      const now = new Date().toISOString();
+      const old = "2020-01-01T00:00:00Z";
+      insertEvent(db, makeEvent({ id: "r1", repo: "owner/api", type: "PushEvent", action: null, created_at: now }));
+      insertEvent(db, makeEvent({ id: "r2", repo: "owner/api", type: "PushEvent", action: null, created_at: now }));
+      insertEvent(db, makeEvent({ id: "r3", repo: "owner/api", type: "PullRequestEvent", action: "opened", created_at: now }));
+      insertEvent(db, makeEvent({ id: "r4", repo: "owner/api", type: "PullRequestEvent", action: "closed", created_at: now }));
+      insertEvent(db, makeEvent({ id: "r5", repo: "owner/worker", type: "PushEvent", action: null, created_at: now }));
+      insertEvent(db, makeEvent({ id: "r6", repo: "owner/api", type: "PushEvent", action: null, created_at: old }));
+    });
+
+    it("returns per-repo stats array", () => {
+      const stats = getRepoStats(db);
+      expect(Array.isArray(stats)).toBe(true);
+      expect(stats.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("counts pushes in last 24h", () => {
+      const stats = getRepoStats(db);
+      const api = stats.find((s) => s.full_name === "owner/api");
+      expect(api?.pushes).toBe(2);
+    });
+
+    it("counts open PRs", () => {
+      const stats = getRepoStats(db);
+      const api = stats.find((s) => s.full_name === "owner/api");
+      expect(api?.prs_open).toBe(1);
+    });
+
+    it("counts closed PRs", () => {
+      const stats = getRepoStats(db);
+      const api = stats.find((s) => s.full_name === "owner/api");
+      expect(api?.prs_closed).toBe(1);
+    });
+
+    it("excludes events older than 24h", () => {
+      const stats = getRepoStats(db);
+      const api = stats.find((s) => s.full_name === "owner/api");
+      expect(api?.pushes).toBe(2); // r6 (old) not counted
+    });
+
+    it("returns correct stats for second repo", () => {
+      const stats = getRepoStats(db);
+      const worker = stats.find((s) => s.full_name === "owner/worker");
+      expect(worker?.pushes).toBe(1);
+      expect(worker?.prs_open).toBe(0);
+    });
+  });
+
+  describe("message_full column", () => {
+    it("github_commits table has message_full column after createDatabase", () => {
+      const cols = db
+        .query<{ name: string }, []>("PRAGMA table_info(github_commits)")
+        .all()
+        .map((r) => r.name);
+      expect(cols).toContain("message_full");
+    });
+
+    it("insertCommit stores null message_full by default", () => {
+      insertEvent(db, makeEvent());
+      insertCommit(db, makeCommit());
+      expect(getCommits(db, {})[0].message_full).toBeNull();
+    });
+
+    it("updateCommitFullMessage persists full message", () => {
+      insertEvent(db, makeEvent());
+      insertCommit(db, makeCommit({ sha: "sha-full" }));
+      updateCommitFullMessage(db, "sha-full", "subject\n\nbody here");
+      expect(getCommits(db, {})[0].message_full).toBe("subject\n\nbody here");
+    });
+  });
+
+  describe("isTruncated", () => {
+    it("returns true for long single-line message >= 70 chars", () => {
+      expect(isTruncated("a".repeat(70))).toBe(true);
+    });
+
+    it("returns false for short messages", () => {
+      expect(isTruncated("fix: small bug")).toBe(false);
+    });
+
+    it("returns false for messages with newlines", () => {
+      expect(isTruncated("a".repeat(80) + "\n\nbody text")).toBe(false);
     });
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useGithubStore } from "../../../src/dashboard/stores/github.ts";
-import type { GithubEvent, GithubRepo, Summary } from "../../../src/types/github.ts";
+import type { GithubEvent, GithubRepo, Summary, RepoStat } from "../../../src/types/github.ts";
 
 const evt1: GithubEvent = {
   id: "e1",
@@ -27,6 +27,8 @@ beforeEach(() => {
     selectedEvent: null,
     selectedEventCommits: [],
     repos: [],
+    repoStats: {},
+    unreadRepos: new Set(),
     contributions: [],
     summary: null,
     filter: {},
@@ -127,5 +129,33 @@ describe("setLoading / setError", () => {
     expect(useGithubStore.getState().error).toBe("oops");
     useGithubStore.getState().setError(null);
     expect(useGithubStore.getState().error).toBeNull();
+  });
+});
+
+describe("repoStats", () => {
+  it("setRepoStats stores stats keyed by full_name", () => {
+    const stat: RepoStat = { full_name: "owner/api", pushes: 5, prs_open: 2, prs_closed: 1 };
+    useGithubStore.getState().setRepoStats([stat]);
+    expect(useGithubStore.getState().repoStats["owner/api"].pushes).toBe(5);
+  });
+
+  it("replaces previous stats on new setRepoStats call", () => {
+    useGithubStore.getState().setRepoStats([{ full_name: "owner/api", pushes: 5, prs_open: 0, prs_closed: 0 }]);
+    useGithubStore.getState().setRepoStats([{ full_name: "owner/new", pushes: 1, prs_open: 0, prs_closed: 0 }]);
+    expect(useGithubStore.getState().repoStats["owner/api"]).toBeUndefined();
+    expect(useGithubStore.getState().repoStats["owner/new"].pushes).toBe(1);
+  });
+});
+
+describe("unreadRepos", () => {
+  it("markRepoUnread adds repo to unread set", () => {
+    useGithubStore.getState().markRepoUnread("owner/api");
+    expect(useGithubStore.getState().unreadRepos.has("owner/api")).toBe(true);
+  });
+
+  it("clearRepoUnread removes repo from unread set", () => {
+    useGithubStore.getState().markRepoUnread("owner/api");
+    useGithubStore.getState().clearRepoUnread("owner/api");
+    expect(useGithubStore.getState().unreadRepos.has("owner/api")).toBe(false);
   });
 });

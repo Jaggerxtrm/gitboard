@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ActivityTimeline } from "../../../../src/dashboard/components/github/ActivityTimeline.tsx";
@@ -81,5 +82,93 @@ describe("ActivityTimeline (SSR)", () => {
       <ActivityTimeline events={events} selectedId={null} onSelect={() => {}} />
     );
     expect(html).toContain("2 commits");
+  });
+});
+
+describe("ActivityTimeline — new SSR features", () => {
+  const now = new Date().toISOString();
+
+  const todayPushEvent: GithubEvent = {
+    id: "push-today",
+    type: "PushEvent",
+    repo: "owner/api",
+    branch: "feat/new-thing",
+    actor: "alice",
+    action: null,
+    title: "Push today",
+    body: null,
+    url: null,
+    additions: 10,
+    deletions: 2,
+    changed_files: 3,
+    commit_count: 1,
+    created_at: now,
+  };
+
+  const prEvent: GithubEvent = {
+    id: "pr-today",
+    type: "PullRequestEvent",
+    repo: "owner/api",
+    branch: null,
+    actor: "bob",
+    action: "opened",
+    title: "PR opened",
+    body: null,
+    url: null,
+    additions: null,
+    deletions: null,
+    changed_files: null,
+    commit_count: null,
+    created_at: now,
+  };
+
+  it("renders +10 additions inline for PushEvent", () => {
+    const html = renderToStaticMarkup(
+      <ActivityTimeline events={[todayPushEvent]} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).toContain("+10");
+  });
+
+  it("renders −2 deletions inline for PushEvent", () => {
+    const html = renderToStaticMarkup(
+      <ActivityTimeline events={[todayPushEvent]} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).toContain("−2");
+  });
+
+  it("does not render diffstat markup when additions/deletions are null", () => {
+    const html = renderToStaticMarkup(
+      <ActivityTimeline events={[prEvent]} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).not.toContain("var(--diff-add)");
+    expect(html).not.toContain("var(--diff-del)");
+  });
+
+  it("renders day group header Today when events are from today", () => {
+    const html = renderToStaticMarkup(
+      <ActivityTimeline events={[todayPushEvent]} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).toContain("Today");
+  });
+
+  it("renders branch name in event row when branch is non-null", () => {
+    const html = renderToStaticMarkup(
+      <ActivityTimeline events={[todayPushEvent]} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).toContain("feat/new-thing");
+  });
+
+  it("chevron toggle rendered for PushEvents in SSR", () => {
+    const html = renderToStaticMarkup(
+      <ActivityTimeline events={[todayPushEvent]} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).toContain("octicon-chevron-down");
+  });
+
+  it("no chevron rendered for non-PushEvents", () => {
+    const html = renderToStaticMarkup(
+      <ActivityTimeline events={[prEvent]} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).not.toContain("octicon-chevron-down");
   });
 });
