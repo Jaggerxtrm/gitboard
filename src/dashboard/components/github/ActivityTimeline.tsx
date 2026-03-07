@@ -1,10 +1,24 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import * as Accordion from "@radix-ui/react-accordion";
+import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDownIcon } from "@primer/octicons-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { EventIcon, eventColor } from "./EventIcon.tsx";
 import { apiClient } from "../../lib/client.ts";
 import type { GithubEvent, GithubCommit } from "../../../types/github.ts";
+
+export const COMMIT_BODY_SOFT_CAP = 20;
+
+export function commitBodyLines(messageFull: string | null | undefined): string[] {
+  if (!messageFull) return [];
+  const lines = messageFull.split("\n");
+  // Skip first line (subject) and blank separator
+  const body = lines.slice(1).filter((_, i, arr) => !(i === 0 && arr[0].trim() === ""));
+  // Drop leading blank lines
+  let start = 0;
+  while (start < body.length && body[start].trim() === "") start++;
+  return body.slice(start, start + COMMIT_BODY_SOFT_CAP);
+}
 
 interface Props {
   events: GithubEvent[];
@@ -45,6 +59,81 @@ function buildItems(events: GithubEvent[]): Item[] {
     items.push({ kind: "event", event: evt });
   }
   return items;
+}
+
+function CommitRow({ commit }: { commit: GithubCommit }) {
+  const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const subject = commit.message.split("\n")[0];
+  const bodyLines = commitBodyLines(commit.message_full);
+  const hasBody = bodyLines.length > 0;
+  const totalBodyLines = commit.message_full
+    ? commit.message_full.split("\n").slice(1).filter((_, i, a) => !(i === 0 && a[0].trim() === "")).filter((l, i, a) => {
+        let s = 0; while (s < a.length && a[s].trim() === "") s++; return i >= s;
+      }).length
+    : 0;
+  const hiddenCount = totalBodyLines - COMMIT_BODY_SOFT_CAP;
+
+  return (
+    <div style={{ padding: "3px 0", fontSize: "var(--text-xs)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <a
+          href={commit.url ?? `https://github.com/${commit.repo}/commit/${commit.sha}`}
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontFamily: "var(--font-mono)", color: "var(--accent-blue)", flexShrink: 0 }}
+        >
+          {commit.sha.slice(0, 7)}
+        </a>
+        <span style={{ color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          {subject}
+        </span>
+        {hasBody && (
+          <Collapsible.Root open={open} onOpenChange={setOpen}>
+            <Collapsible.Trigger
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                padding: "0 2px",
+                flexShrink: 0,
+                lineHeight: 1,
+              }}
+              aria-label={open ? "Collapse commit body" : "Expand commit body"}
+            >
+              <span style={{ display: "inline-flex", transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }}><ChevronDownIcon size={11} /></span>
+            </Collapsible.Trigger>
+            <Collapsible.Content />
+          </Collapsible.Root>
+        )}
+      </div>
+      {hasBody && open && (
+        <div style={{
+          marginTop: 4,
+          marginLeft: 44,
+          padding: "6px 8px",
+          background: "var(--surface-tertiary)",
+          borderRadius: "var(--radius-sm)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          color: "var(--text-secondary)",
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.5,
+        }}>
+          {(showAll ? commit.message_full!.split("\n").slice(1) : bodyLines).join("\n")}
+          {!showAll && hiddenCount > 0 && (
+            <button
+              onClick={() => setShowAll(true)}
+              style={{ display: "block", marginTop: 4, background: "transparent", border: "none", color: "var(--accent-blue)", cursor: "pointer", fontSize: 10, padding: 0 }}
+            >
+              Show {hiddenCount} more line{hiddenCount !== 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface EventRowProps {
@@ -298,19 +387,7 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
                           ) : (
                             <div style={{ padding: "4px 16px 8px" }}>
                               {(commitCache.get(item.event.id) ?? []).map(commit => (
-                                <div key={commit.sha} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: "var(--text-xs)" }}>
-                                  <a
-                                    href={commit.url ?? `https://github.com/${commit.repo}/commit/${commit.sha}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{ fontFamily: "var(--font-mono)", color: "var(--accent-blue)", flexShrink: 0 }}
-                                  >
-                                    {commit.sha.slice(0, 7)}
-                                  </a>
-                                  <span style={{ color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {commit.message.split("\n")[0]}
-                                  </span>
-                                </div>
+                                <CommitRow key={commit.sha} commit={commit} />
                               ))}
                             </div>
                           )}
