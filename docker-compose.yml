@@ -1,5 +1,5 @@
 services:
-  agent-forge:
+  omniforge:
     build: .
     ports:
       - "3000:3000"

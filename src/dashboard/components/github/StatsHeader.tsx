@@ -1,15 +1,16 @@
+import { CalendarIcon, UploadIcon, GitPullRequestIcon, GitCommitIcon, RepoIcon } from "@primer/octicons-react";
 import type { Summary } from "../../../types/github.ts";
 
 interface Props {
   summary: Summary | null;
 }
 
-const STATS: Array<{ key: keyof Summary; label: string }> = [
-  { key: "events", label: "Events" },
-  { key: "pushes", label: "Pushes" },
-  { key: "prs", label: "PRs" },
-  { key: "commits", label: "Commits" },
-  { key: "repos", label: "Repos" },
+const STATS: Array<{ key: keyof Summary; label: string; Icon: React.ComponentType<{ size?: number }> }> = [
+  { key: "events",  label: "Events",  Icon: CalendarIcon },
+  { key: "pushes",  label: "Pushes",  Icon: UploadIcon },
+  { key: "prs",     label: "PRs",     Icon: GitPullRequestIcon },
+  { key: "commits", label: "Commits", Icon: GitCommitIcon },
+  { key: "repos",   label: "Repos",   Icon: RepoIcon },
 ];
 
 export function StatsHeader({ summary }: Props) {
@@ -17,25 +18,25 @@ export function StatsHeader({ summary }: Props) {
     <div style={{
       display: "flex",
       alignItems: "center",
+      height: 32,
+      padding: "0 16px",
       gap: 0,
-      padding: "8px 24px",
       background: "var(--surface-secondary)",
       borderBottom: "1px solid var(--border-subtle)",
       flexShrink: 0,
     }}>
-      {STATS.map(({ key, label }, i) => (
+      {STATS.map(({ key, label, Icon }, i) => (
         <div key={key} style={{ display: "flex", alignItems: "center" }}>
           {i > 0 && (
-            <span style={{ margin: "0 var(--spacing-xl)", color: "var(--text-muted)" }}>·</span>
+            <span style={{ margin: "0 10px", color: "var(--text-muted)", fontSize: 11 }}>·</span>
           )}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>
-              {label}
-            </span>
-            <span style={{ fontSize: "var(--text-xl)", fontWeight: 600, fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-muted)" }}>
+            <Icon size={12} />
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
               {summary ? String(summary[key]) : "—"}
             </span>
-          </div>
+            {label}
+          </span>
         </div>
       ))}
     </div>

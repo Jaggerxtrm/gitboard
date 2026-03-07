@@ -1,10 +1,24 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import * as Accordion from "@radix-ui/react-accordion";
+import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDownIcon } from "@primer/octicons-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { EventIcon, eventColor } from "./EventIcon.tsx";
 import { apiClient } from "../../lib/client.ts";
 import type { GithubEvent, GithubCommit } from "../../../types/github.ts";
+
+export const COMMIT_BODY_SOFT_CAP = 20;
+
+export function commitBodyLines(messageFull: string | null | undefined): string[] {
+  if (!messageFull) return [];
+  const lines = messageFull.split("\n");
+  // Skip first line (subject) and blank separator
+  const body = lines.slice(1).filter((_, i, arr) => !(i === 0 && arr[0].trim() === ""));
+  // Drop leading blank lines
+  let start = 0;
+  while (start < body.length && body[start].trim() === "") start++;
+  return body.slice(start, start + COMMIT_BODY_SOFT_CAP);
+}
 
 interface Props {
   events: GithubEvent[];
@@ -47,16 +61,89 @@ function buildItems(events: GithubEvent[]): Item[] {
   return items;
 }
 
+function CommitRow({ commit }: { commit: GithubCommit }) {
+  const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const subject = commit.message.split("\n")[0];
+  const bodyLines = commitBodyLines(commit.message_full);
+  const hasBody = bodyLines.length > 0;
+  const totalBodyLines = commit.message_full
+    ? commit.message_full.split("\n").slice(1).filter((_, i, a) => !(i === 0 && a[0].trim() === "")).filter((l, i, a) => {
+        let s = 0; while (s < a.length && a[s].trim() === "") s++; return i >= s;
+      }).length
+    : 0;
+  const hiddenCount = totalBodyLines - COMMIT_BODY_SOFT_CAP;
+
+  return (
+    <div style={{ padding: "3px 0", fontSize: "var(--text-xs)" }}>
+      <div
+        onClick={hasBody ? () => setOpen(o => !o) : undefined}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          cursor: hasBody ? "pointer" : "default",
+          borderRadius: "var(--radius-xs)",
+          padding: "1px 2px",
+        }}
+      >
+        <a
+          href={commit.url ?? `https://github.com/${commit.repo}/commit/${commit.sha}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          style={{ fontFamily: "var(--font-mono)", color: "var(--accent-blue)", flexShrink: 0 }}
+        >
+          {commit.sha.slice(0, 7)}
+        </a>
+        <span style={{ color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          {subject}
+        </span>
+        {hasBody && (
+          <span style={{ display: "inline-flex", color: "var(--text-muted)", flexShrink: 0, transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }}>
+            <ChevronDownIcon size={11} />
+          </span>
+        )}
+      </div>
+      {hasBody && open && (
+        <div style={{
+          marginTop: 4,
+          marginLeft: 44,
+          padding: "6px 8px",
+          background: "var(--surface-tertiary)",
+          borderRadius: "var(--radius-sm)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          color: "var(--text-secondary)",
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.5,
+        }}>
+          {(showAll ? commit.message_full!.split("\n").slice(1) : bodyLines).join("\n")}
+          {!showAll && hiddenCount > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowAll(true); }}
+              style={{ display: "block", marginTop: 4, background: "transparent", border: "none", color: "var(--accent-blue)", cursor: "pointer", fontSize: 10, padding: 0 }}
+            >
+              Show {hiddenCount} more line{hiddenCount !== 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface EventRowProps {
   evt: GithubEvent;
   selected: boolean;
   hovered: boolean;
+  expanded?: boolean;
   onSelect: (e: GithubEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }
 
-function EventRow({ evt, selected, hovered, onSelect, onMouseEnter, onMouseLeave }: EventRowProps) {
+function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseEnter, onMouseLeave }: EventRowProps) {
   const color = eventColor(evt.type, evt.action);
   const hasDiff = evt.additions != null || evt.deletions != null;
 
@@ -127,7 +214,7 @@ function EventRow({ evt, selected, hovered, onSelect, onMouseEnter, onMouseLeave
             </span>
           )}
           {evt.type === "PushEvent" && (
-            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>
+            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", display: "inline-flex", transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }}>
               <ChevronDownIcon size={12} />
             </span>
           )}
@@ -192,23 +279,21 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
     getScrollElement: () => parentRef.current,
     estimateSize: (i) => items[i].kind === "header" ? 32 : 68,
     overscan: 5,
+    measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });
 
-  // Fetch commits when accordion opens
-  const handleAccordionChange = useCallback(async (openIds: string[]) => {
-    setExpandedIds(openIds);
-    for (const evtId of openIds) {
-      if (commitCache.has(evtId) || loadingIds.has(evtId)) continue;
-      setLoadingIds(prev => new Set([...prev, evtId]));
-      try {
-        const res = await apiClient.getCommits(undefined, undefined, evtId);
-        setCommitCache(prev => new Map([...prev, [evtId, res.data]]));
-      } catch {
-        setCommitCache(prev => new Map([...prev, [evtId, []]]));
-      } finally {
-        setLoadingIds(prev => { const n = new Set(prev); n.delete(evtId); return n; });
-      }
-    }
+  // Toggle commit accordion and fetch if needed
+  const handleAccordionChange = useCallback((evtId: string) => {
+    setExpandedIds(prev => {
+      if (prev.includes(evtId)) return prev.filter(id => id !== evtId);
+      return [...prev, evtId];
+    });
+    if (commitCache.has(evtId) || loadingIds.has(evtId)) return;
+    setLoadingIds(prev => new Set([...prev, evtId]));
+    apiClient.getCommits(undefined, undefined, evtId)
+      .then(res => setCommitCache(prev => new Map([...prev, [evtId, res.data]])))
+      .catch(() => setCommitCache(prev => new Map([...prev, [evtId, []]])))
+      .finally(() => setLoadingIds(prev => { const n = new Set(prev); n.delete(evtId); return n; }));
   }, [commitCache, loadingIds]);
 
   // Keyboard navigation
@@ -260,13 +345,14 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
       )}
 
       <div ref={parentRef} style={{ overflow: "auto", flex: 1 }} role="table">
-        <Accordion.Root type="multiple" value={expandedIds} onValueChange={handleAccordionChange}>
           <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: "relative" }}>
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const item = items[virtualRow.index];
               return (
                 <div
                   key={item.kind === "header" ? item.key : item.event.id}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -278,51 +364,38 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
                   {item.kind === "header" ? (
                     <DayHeader label={item.label} />
                   ) : (
-                    <Accordion.Item value={item.event.id} style={{ listStyle: "none" }}>
-                      <Accordion.Header>
-                        <Accordion.Trigger asChild>
-                          <EventRow
-                            evt={item.event}
-                            selected={item.event.id === selectedId}
-                            hovered={hoveredId === item.event.id}
-                            onSelect={onSelect}
-                            onMouseEnter={() => setHoveredId(item.event.id)}
-                            onMouseLeave={() => setHoveredId(null)}
-                          />
-                        </Accordion.Trigger>
-                      </Accordion.Header>
-                      {item.event.type === "PushEvent" && (
-                        <Accordion.Content style={{ overflow: "hidden" }}>
+                    <div>
+                      <EventRow
+                        evt={item.event}
+                        selected={item.event.id === selectedId}
+                        hovered={hoveredId === item.event.id}
+                        expanded={expandedIds.includes(item.event.id)}
+                        onSelect={(evt) => {
+                          onSelect(evt);
+                          if (evt.type === "PushEvent") handleAccordionChange(item.event.id);
+                        }}
+                        onMouseEnter={() => setHoveredId(item.event.id)}
+                        onMouseLeave={() => setHoveredId(null)}
+                      />
+                      {item.event.type === "PushEvent" && expandedIds.includes(item.event.id) && (
+                        <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
                           {loadingIds.has(item.event.id) ? (
                             <div style={{ padding: "8px 16px", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Loading commits…</div>
                           ) : (
                             <div style={{ padding: "4px 16px 8px" }}>
                               {(commitCache.get(item.event.id) ?? []).map(commit => (
-                                <div key={commit.sha} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: "var(--text-xs)" }}>
-                                  <a
-                                    href={commit.url ?? `https://github.com/${commit.repo}/commit/${commit.sha}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{ fontFamily: "var(--font-mono)", color: "var(--accent-blue)", flexShrink: 0 }}
-                                  >
-                                    {commit.sha.slice(0, 7)}
-                                  </a>
-                                  <span style={{ color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {commit.message.split("\n")[0]}
-                                  </span>
-                                </div>
+                                <CommitRow key={commit.sha} commit={commit} />
                               ))}
                             </div>
                           )}
-                        </Accordion.Content>
+                        </div>
                       )}
-                    </Accordion.Item>
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
-        </Accordion.Root>
       </div>
     </div>
   );

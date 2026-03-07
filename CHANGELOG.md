@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Decisions
+- Sidebar detail accordion deferred: event detail will live in ActivityTimeline accordion (T7) only; sidebar stays a clean repo list (2026-03-07)
+- ContributionHeatmap integration deferred to v0.8.0: component kept in codebase but not wired up; right-panel removed, 2-column layout in place (2026-03-07)
+
 ### Added
 - RepoSidebar component — grouped repo list with 24h stats, unread dots, GitHub links (replaces RepoFilter)
 - EventDetail component — slide-in panel with diffstat bar, expandable commit messages, message_full lazy enrichment (replaces CommitList)

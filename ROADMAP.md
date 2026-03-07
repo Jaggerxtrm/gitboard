@@ -13,16 +13,17 @@ All items below are scoped to frontend changes only unless noted.
 - Update `package.json` name, README heading, Docker image name, window title
 - Rename repo (optional — can stay as `agent-forge` on disk, display name changes)
 
-### 2. Contribution heatmap — relocate below repo list
-- Move `ContributionHeatmap` from center column (above timeline) to the bottom of the left sidebar, below `RepoSidebar`
-- Frees the full viewport height for the activity timeline (most valuable real estate)
-- Heatmap becomes a context item for the selected repo, not a global header
+### 2. ~~Contribution heatmap — relocate below repo list~~ *(deferred → v0.8.0)*
+- ~~Move `ContributionHeatmap` from center column (above timeline) to the bottom of the left sidebar~~
+- **Decision (2026-03-07):** Heatmap integration deferred. Component kept in codebase, not wired up.
+  The right column panel has been removed and the sidebar is now a clean repo list only.
+  Heatmap will be revisited once the multi-panel layout (v0.8.0) defines a better home for it.
 
-### 3. Inline commit details — accordion in timeline, detail panel optional
+### 3. Inline commit details — accordion in timeline *(primary focus)*
 - Expand PushEvent accordion to show **nested commit rows** with full `message_full` body
-- Each commit row: SHA (linked) → subject → collapsible body (Radix Collapsible, same as EventDetail currently uses)
+- Each commit row: SHA (linked) → subject → collapsible body (Radix Collapsible)
 - Diffstats (`+N −N`) shown inline on the EventRow itself
-- Right detail panel remains for PR body / release notes, but is **not needed for commits**
+- **This is the canonical home for event details** — no sidebar accordion needed
 
 ### 4. Separate WatchEvents from owned activity
 - Current: WatchEvents (stars on other repos) mixed into the main timeline
@@ -30,22 +31,20 @@ All items below are scoped to frontend changes only unless noted.
 - Main timeline shows only **push, PR, issue, review, release, create** events on **your own repos**
 - WatchEvents shown in a collapsed "Starred this week" strip at the top or in a separate tab
 
-### 5. No right panel — detail as left-panel nested accordion
-- Remove the 360px right `EventDetail` slide-in panel entirely
-- On event selection: expand an **inline accordion** within the left sidebar showing event details
-  - PR body, commit list, diffstats
-  - Smaller font (`11px`/`12px`), compressed line-height
-  - Scrollable within the sidebar column
-- Right column space reclaimed by the activity timeline (more horizontal width)
+### 5. ~~No right panel — detail as left-panel nested accordion~~ *(revised)*
+- ✅ Right panel (360px `EventDetail` slide-in) **removed** — 2-column layout in place
+- ~~On event selection: expand inline accordion within the left sidebar~~
+- **Decision (2026-03-07):** Sidebar detail accordion deferred. Event detail lives in the
+  ActivityTimeline accordion (item 3) only. Sidebar stays a clean, scannable repo list.
 
 ### 6. Tighter stats header with octicons
 - Current: tall metric strip with large numbers and uppercase labels
-- Proposed: single-line bar, `11px` text, right-to-left reading: `◆ 12 pushes · ↑ 4 PRs · ⎇ 31 commits · 📦 7 repos`
+- Proposed: single-line bar, `11px` text
 - Use `@primer/octicons-react` icons per category:
   - `GitCommitIcon` → commits
   - `GitPullRequestIcon` → PRs
-  - `RepoForkedIcon` / `RepoIcon` → repos
-  - `UploadIcon` or `RepoIcon` → pushes
+  - `RepoIcon` → repos
+  - `UploadIcon` → pushes
   - `CalendarIcon` → events total
 - Height: `32px` max (from current ~`56px`)
 
@@ -62,6 +61,7 @@ All items below are scoped to frontend changes only unless noted.
 - Fleet panel: agent session list (Mercury stack services)
 - Registry panel: specialist system overview
 - Top-nav tabs become functional (currently GitHub-only)
+- Revisit ContributionHeatmap placement in multi-panel layout
 
 ## v1.0.0 — Mercury Integration
 

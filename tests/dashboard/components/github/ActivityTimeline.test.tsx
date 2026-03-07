@@ -172,3 +172,37 @@ describe("ActivityTimeline — new SSR features", () => {
     expect(html).not.toContain("octicon-chevron-down");
   });
 });
+
+// ─── T7: Inline commit accordion ─────────────────────────────────────────────
+import { commitBodyLines, COMMIT_BODY_SOFT_CAP } from "../../../../src/dashboard/components/github/ActivityTimeline.tsx";
+
+describe("T7: commitBodyLines", () => {
+  it("returns empty array when message_full is null", () => {
+    expect(commitBodyLines(null)).toEqual([]);
+  });
+
+  it("returns empty array when message_full has no body (subject only)", () => {
+    expect(commitBodyLines("fix: typo")).toEqual([]);
+  });
+
+  it("returns body lines after blank separator", () => {
+    const full = "fix: typo\n\nThis fixes the issue\nwith more detail";
+    expect(commitBodyLines(full)).toEqual(["This fixes the issue", "with more detail"]);
+  });
+
+  it("trims leading blank separator line", () => {
+    const full = "feat: add feature\n\n\nsome body";
+    expect(commitBodyLines(full)).toEqual(["some body"]);
+  });
+
+  it("caps at COMMIT_BODY_SOFT_CAP lines", () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `line ${i}`);
+    const full = "subject\n\n" + lines.join("\n");
+    const result = commitBodyLines(full);
+    expect(result.length).toBeLessThanOrEqual(COMMIT_BODY_SOFT_CAP);
+  });
+
+  it("COMMIT_BODY_SOFT_CAP is 20", () => {
+    expect(COMMIT_BODY_SOFT_CAP).toBe(20);
+  });
+});

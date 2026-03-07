@@ -23,7 +23,7 @@ export function App() {
         flexShrink: 0,
       }}>
         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-          Agent Forge
+          OmniForge
         </span>
         <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
