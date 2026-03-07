@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { insertEvent, insertCommit, ensureRepo } from "./github-store.ts";
+import { insertEvent, insertCommit, ensureRepo, updateEventEnrichment } from "./github-store.ts";
 import type { GithubEvent, GithubCommit } from "./github-store.ts";
 
 export interface RawGithubCommit {
@@ -177,21 +177,174 @@ export class GithubPoller {
     this.backfillPages = options.backfillPages ?? 3;
   }
 
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
+  private get headers() {
+    return {
+      Authorization: `Bearer ${this.token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "agent-forge/0.1.0",
+    };
+  }
+
+  /** Generic GET against the GitHub REST API. Returns null on error. */
+  private async apiGet<T>(path: string): Promise<T | null> {
+    const url = path.startsWith("https://") ? path : `https://api.github.com${path}`;
+    let response: Response;
+    try {
+      response = await fetch(url, { headers: this.headers });
+    } catch {
+      return null;
+    }
+    if (!response.ok) return null;
+    const remaining = response.headers.get("X-RateLimit-Remaining");
+    const limit = response.headers.get("X-RateLimit-Limit");
+    if (remaining && limit) {
+      const ratio = parseInt(remaining) / parseInt(limit);
+      if (ratio < 0.1) {
+        console.warn(`[github-poller] Rate limit at ${Math.round(ratio * 100)}% — backing off`);
+        await Bun.sleep(60_000);
+      }
+    }
+    return (await response.json()) as T;
+  }
+
+  /** Fetch commit list + aggregate diff stats via the Compare API. */
+  private async fetchCompare(
+    repo: string,
+    before: string,
+    head: string
+  ): Promise<{ commits: GithubCommit[]; additions: number; deletions: number; changed_files: number } | null> {
+    interface CompareFile { additions: number; deletions: number }
+    interface CompareCommit {
+      sha: string;
+      commit: { message: string; author: { name: string; date: string } };
+      html_url: string;
+    }
+    interface CompareResponse {
+      commits: CompareCommit[];
+      files?: CompareFile[];
+    }
+
+    const data = await this.apiGet<CompareResponse>(`/repos/${repo}/compare/${before}...${head}`);
+    if (!data) return null;
+
+    const additions = data.files?.reduce((s, f) => s + f.additions, 0) ?? 0;
+    const deletions = data.files?.reduce((s, f) => s + f.deletions, 0) ?? 0;
+    const changed_files = data.files?.length ?? 0;
+
+    const commits: GithubCommit[] = data.commits.map((c) => ({
+      sha: c.sha,
+      repo,
+      branch: null,       // patched by caller
+      author: c.commit.author.name,
+      message: c.commit.message.split("\n")[0],
+      message_full: c.commit.message,
+      url: c.html_url,
+      additions: null,    // per-commit stats not in compare response
+      deletions: null,
+      changed_files: null,
+      event_id: null,     // patched by caller
+      committed_at: c.commit.author.date,
+    }));
+
+    return { commits, additions, deletions, changed_files };
+  }
+
+  /** Fetch full PR details (title, body, diff stats). */
+  private async fetchPullRequest(
+    repo: string,
+    number: number
+  ): Promise<{ title: string; body: string | null; html_url: string; additions: number; deletions: number; changed_files: number } | null> {
+    interface PRResponse {
+      title: string;
+      body: string | null;
+      html_url: string;
+      additions: number;
+      deletions: number;
+      changed_files: number;
+    }
+    return this.apiGet<PRResponse>(`/repos/${repo}/pulls/${number}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Core ingestion
+  // ---------------------------------------------------------------------------
+
   async ingestEvents(rawEvents: RawGithubEvent[]): Promise<void> {
     let newEvents = 0;
     let newCommits = 0;
 
     for (const raw of rawEvents) {
       const event = transformEvent(raw);
-      // Auto-discover the repo so it appears in the UI without manual tracking.
       ensureRepo(this.db, event.repo);
       const isNew = insertEvent(this.db, event);
       if (isNew) newEvents++;
 
-      const commits = transformCommits(raw);
-      for (const commit of commits) {
-        const stored = insertCommit(this.db, commit);
-        if (stored) newCommits++;
+      if (raw.type === "PushEvent") {
+        const payload = raw.payload as {
+          ref?: string;
+          head?: string;
+          before?: string;
+          size?: number;
+          commits?: RawGithubCommit[];
+        };
+        const branch = payload.ref ? payload.ref.replace("refs/heads/", "") : null;
+        const head = payload.head;
+        const before = payload.before;
+        const isInitialCommit = before === "0000000000000000000000000000000000000000";
+
+        if (isNew && head && before && !isInitialCommit) {
+          // Enrich via Compare API: full commit list + aggregate diff stats
+          const compareData = await this.fetchCompare(raw.repo.name, before, head);
+          if (compareData) {
+            updateEventEnrichment(this.db, raw.id, {
+              commit_count: compareData.commits.length,
+              additions: compareData.additions,
+              deletions: compareData.deletions,
+              changed_files: compareData.changed_files,
+              // Use the last commit message as the push title (most recent)
+              title: compareData.commits.at(-1)?.message ?? null,
+            });
+            for (const commit of compareData.commits) {
+              commit.branch = branch;
+              commit.event_id = raw.id;
+              if (insertCommit(this.db, commit)) newCommits++;
+            }
+          } else {
+            // Compare API unavailable (private repo without contents scope, etc.)
+            // Fall back to payload commits if present
+            const commits = transformCommits(raw);
+            for (const commit of commits) {
+              if (insertCommit(this.db, commit)) newCommits++;
+            }
+          }
+        } else if (!isNew) {
+          // Event already stored; still try payload commits in case they were missed
+          const commits = transformCommits(raw);
+          for (const commit of commits) {
+            if (insertCommit(this.db, commit)) newCommits++;
+          }
+        }
+      } else if (raw.type === "PullRequestEvent" && isNew) {
+        const pr = raw.payload.pull_request as { number?: number } | undefined;
+        const prNumber = pr?.number;
+        if (prNumber) {
+          const prData = await this.fetchPullRequest(raw.repo.name, prNumber);
+          if (prData) {
+            updateEventEnrichment(this.db, raw.id, {
+              title: prData.title,
+              body: prData.body,
+              url: prData.html_url,
+              additions: prData.additions,
+              deletions: prData.deletions,
+              changed_files: prData.changed_files,
+            });
+          }
+        }
       }
     }
 
@@ -200,15 +353,18 @@ export class GithubPoller {
     }
   }
 
-  async pollUser(username: string): Promise<void> {
-    const headers = {
-      Authorization: `Bearer ${this.token}`,
-      Accept: "application/vnd.github.v3+json",
-      "User-Agent": "agent-forge/0.1.0",
-    };
+  // ---------------------------------------------------------------------------
+  // Polling
+  // ---------------------------------------------------------------------------
 
+  async pollUser(username: string): Promise<void> {
     const url = `https://api.github.com/users/${username}/events?per_page=100`;
-    const response = await fetch(url, { headers });
+    let response: Response;
+    try {
+      response = await fetch(url, { headers: this.headers });
+    } catch (err) {
+      throw new Error(`[github-poller] Network error polling ${username}: ${err}`);
+    }
 
     if (!response.ok) {
       const remaining = response.headers.get("X-RateLimit-Remaining");
@@ -233,17 +389,17 @@ export class GithubPoller {
   }
 
   async backfill(username: string): Promise<void> {
-    const headers = {
-      Authorization: `Bearer ${this.token}`,
-      Accept: "application/vnd.github.v3+json",
-      "User-Agent": "agent-forge/0.1.0",
-    };
-
     console.log(`[github-poller] Backfilling user events for ${username} (up to ${this.backfillPages} pages)`);
 
     for (let page = 1; page <= this.backfillPages; page++) {
       const url = `https://api.github.com/users/${username}/events?per_page=100&page=${page}`;
-      const response = await fetch(url, { headers });
+      let response: Response;
+      try {
+        response = await fetch(url, { headers: this.headers });
+      } catch {
+        console.warn(`[github-poller] Backfill page ${page} network error`);
+        break;
+      }
       if (!response.ok) {
         console.warn(`[github-poller] Backfill page ${page} failed: ${response.status}`);
         break;
@@ -251,14 +407,7 @@ export class GithubPoller {
       const events: RawGithubEvent[] = await response.json();
       if (events.length === 0) break;
 
-      const pushEvents = events.filter((e) => e.type === "PushEvent");
-      const commitCounts = pushEvents.map((e) => {
-        const c = (e.payload.commits as unknown[] | undefined)?.length ?? 0;
-        const s = (e.payload.size as number | undefined) ?? "?";
-        return `size=${s} commits_in_payload=${c}`;
-      });
-      console.log(`[github-poller] Page ${page}: ${events.length} events, ${pushEvents.length} PushEvents [${commitCounts.join(", ")}]`);
-
+      console.log(`[github-poller] Page ${page}: ${events.length} events`);
       await this.ingestEvents(events);
     }
   }

@@ -114,6 +114,60 @@ describe("transformCommits", () => {
   });
 });
 
+// Fake Compare API response matching the rawPushEvent fixture
+const fakeCompareResponse = {
+  commits: [
+    {
+      sha: "sha-1",
+      commit: { message: "First commit", author: { name: "alice", date: "2026-03-06T10:00:00Z" } },
+      html_url: "https://github.com/owner/repo-a/commit/sha-1",
+    },
+    {
+      sha: "sha-2",
+      commit: { message: "Second commit\n\nFull body here.", author: { name: "alice", date: "2026-03-06T10:01:00Z" } },
+      html_url: "https://github.com/owner/repo-a/commit/sha-2",
+    },
+  ],
+  files: [{ additions: 15, deletions: 3 }, { additions: 5, deletions: 0 }],
+};
+
+// Fake PR API response matching the rawPREvent fixture
+const fakePRResponse = {
+  title: "Fix bug",
+  body: "Fixes the thing",
+  html_url: "https://github.com/owner/repo-a/pull/42",
+  additions: 30,
+  deletions: 5,
+  changed_files: 2,
+};
+
+// A PR event that includes the PR number (needed for enrichment)
+const rawPREventWithNumber: RawGithubEvent = {
+  id: "raw-pr-2",
+  type: "PullRequestEvent",
+  repo: { name: "owner/repo-a" },
+  actor: { login: "bob" },
+  created_at: "2026-03-06T11:30:00Z",
+  payload: {
+    action: "opened",
+    pull_request: { number: 42 },
+  },
+};
+
+function makeFetchMock() {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+    if (url.includes("/compare/")) {
+      return new Response(JSON.stringify(fakeCompareResponse), { status: 200 });
+    }
+    if (url.includes("/pulls/")) {
+      return new Response(JSON.stringify(fakePRResponse), { status: 200 });
+    }
+    // Default: 404 (causes apiGet to return null, triggering payload fallback)
+    return new Response("{}", { status: 404 });
+  });
+}
+
 describe("GithubPoller", () => {
   let db: ReturnType<typeof createDatabase>;
   let tmpDir: string;
@@ -121,9 +175,11 @@ describe("GithubPoller", () => {
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "agent-forge-poller-test-"));
     db = createDatabase(join(tmpDir, "state.db"));
+    makeFetchMock();
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     db.close();
     await rm(tmpDir, { recursive: true, force: true });
   });
@@ -133,13 +189,41 @@ describe("GithubPoller", () => {
     expect(poller).toBeDefined();
   });
 
-  it("ingestEvents stores events and commits in db", async () => {
+  it("ingestEvents stores events and commits from Compare API", async () => {
     const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000 });
     await poller.ingestEvents([rawPushEvent]);
     const events = getEvents(db, {});
     const commits = getCommits(db, {});
     expect(events).toHaveLength(1);
     expect(events[0].id).toBe("raw-push-1");
+    expect(commits).toHaveLength(2);
+    // Enriched stats from Compare API
+    expect(events[0].additions).toBe(20);
+    expect(events[0].deletions).toBe(3);
+    expect(events[0].changed_files).toBe(2);
+    expect(commits[0].message_full).toBeDefined();
+  });
+
+  it("ingestEvents enriches PR events from PR API", async () => {
+    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000 });
+    await poller.ingestEvents([rawPREventWithNumber]);
+    const events = getEvents(db, {});
+    expect(events).toHaveLength(1);
+    expect(events[0].title).toBe("Fix bug");
+    expect(events[0].additions).toBe(30);
+    expect(events[0].deletions).toBe(5);
+    expect(events[0].changed_files).toBe(2);
+    expect(events[0].url).toBe("https://github.com/owner/repo-a/pull/42");
+  });
+
+  it("falls back to payload commits when Compare API fails", async () => {
+    // Override mock to always return 404
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 404 }));
+    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000 });
+    await poller.ingestEvents([rawPushEvent]);
+    const commits = getCommits(db, {});
+    // Payload has 2 commits — these are stored as fallback
     expect(commits).toHaveLength(2);
   });
 

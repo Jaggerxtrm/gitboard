@@ -109,9 +109,9 @@ export function insertEvent(db: Database, event: GithubEvent): boolean {
 export function insertCommit(db: Database, commit: GithubCommit): boolean {
   const result = db.prepare(
     `INSERT OR IGNORE INTO github_commits
-      (sha, repo, branch, author, message, url,
+      (sha, repo, branch, author, message, message_full, url,
        additions, deletions, changed_files, event_id, committed_at)
-     VALUES ($sha, $repo, $branch, $author, $message, $url,
+     VALUES ($sha, $repo, $branch, $author, $message, $message_full, $url,
              $additions, $deletions, $changed_files, $event_id, $committed_at)`
   ).run({
     $sha: commit.sha,
@@ -119,6 +119,7 @@ export function insertCommit(db: Database, commit: GithubCommit): boolean {
     $branch: commit.branch,
     $author: commit.author,
     $message: commit.message,
+    $message_full: commit.message_full ?? null,
     $url: commit.url,
     $additions: commit.additions,
     $deletions: commit.deletions,
@@ -293,6 +294,39 @@ export function isTruncated(msg: string): boolean {
 
 export function updateCommitFullMessage(db: Database, sha: string, fullMessage: string): void {
   db.prepare("UPDATE github_commits SET message_full = ? WHERE sha = ?").run(fullMessage, sha);
+}
+
+export interface EventEnrichment {
+  title?: string | null;
+  body?: string | null;
+  url?: string | null;
+  additions?: number | null;
+  deletions?: number | null;
+  changed_files?: number | null;
+  commit_count?: number | null;
+}
+
+export function updateEventEnrichment(db: Database, id: string, e: EventEnrichment): void {
+  db.prepare(
+    `UPDATE github_events SET
+       title         = COALESCE($title, title),
+       body          = COALESCE($body, body),
+       url           = COALESCE($url, url),
+       additions     = COALESCE($additions, additions),
+       deletions     = COALESCE($deletions, deletions),
+       changed_files = COALESCE($changed_files, changed_files),
+       commit_count  = COALESCE($commit_count, commit_count)
+     WHERE id = $id`
+  ).run({
+    $id: id,
+    $title: e.title ?? null,
+    $body: e.body ?? null,
+    $url: e.url ?? null,
+    $additions: e.additions ?? null,
+    $deletions: e.deletions ?? null,
+    $changed_files: e.changed_files ?? null,
+    $commit_count: e.commit_count ?? null,
+  } as AnyParams);
 }
 
 export function getRepoStats(db: Database): RepoStat[] {
