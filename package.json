@@ -1,5 +1,5 @@
 {
-  "name": "agent-forge",
+  "name": "omniforge",
   "version": "0.1.0",
   "description": "CLI/TUI orchestrator for AI agents managing Mercury stack services",
   "type": "module",
