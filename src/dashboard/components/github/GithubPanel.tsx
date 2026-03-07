@@ -22,6 +22,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     filter,
     loading,
     error,
+    unreadRepos,
     selectEvent,
     setSelectedEventCommits,
     setFilter,
@@ -44,7 +45,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: 13 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "var(--text-base)" }}>
         Loading GitHub activity…
       </div>
     );
@@ -52,7 +53,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   if (error) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--accent-red)", fontSize: 13 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--accent-red)", fontSize: "var(--text-base)" }}>
         {error}
       </div>
     );
@@ -65,6 +66,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         repos={repos}
         stats={repoStats}
         selectedRepos={filter.repos ?? []}
+        unreadRepos={unreadRepos}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
       />
@@ -82,14 +84,14 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         </div>
       </div>
 
-      {/* Right: Event Detail */}
+      {/* Right: Event Detail — CSS width transition */}
       <div style={{
-        width: detailOpen ? 360 : 0,
+        width: detailOpen ? "var(--detail-width)" : 0,
         minWidth: 0,
         overflow: "hidden",
-        borderLeft: detailOpen ? "1px solid var(--border)" : "none",
-        background: "var(--bg-secondary)",
-        transition: "width 0.15s ease",
+        borderLeft: detailOpen ? "1px solid var(--border-subtle)" : "none",
+        background: "var(--surface-secondary)",
+        transition: "width var(--transition-fast)",
         flexShrink: 0,
       }}>
         <EventDetail event={selectedEvent} commits={selectedEventCommits} />

@@ -11,19 +11,28 @@ export function App() {
   const [activeTab, setActiveTab] = useState<Tab>("github");
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '12px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
+      <header style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 24,
+        padding: '0 20px',
+        height: 'var(--topbar-height)',
+        background: 'linear-gradient(180deg, var(--surface-secondary), var(--surface-primary))',
+        borderBottom: '1px solid var(--border-subtle)',
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
           Agent Forge
         </span>
-        <nav style={{ display: 'flex', gap: 4 }}>
+        <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
-                padding: '6px 12px',
-                fontSize: 13,
+                padding: '0 12px',
+                fontSize: 'var(--text-base)',
                 fontWeight: 500,
                 color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                 background: 'transparent',
@@ -44,4 +53,3 @@ export function App() {
     </div>
   );
 }
-
