@@ -122,3 +122,79 @@ describe("RepoSidebar", () => {
     expect(html).toContain("Push to main");
   });
 });
+
+// ─── T5: Repo sidebar own repos only, sorted by last activity ────────────────
+import { filterOwnRepos, sortByLastEvent, relativeTime } from "../../../../src/dashboard/components/github/RepoSidebar.tsx";
+
+const r = (full_name: string, last_polled_at: string | null = null) =>
+  ({ full_name, display_name: null, tracked: true, group_name: null, last_polled_at, color: null });
+
+describe("T5: filterOwnRepos", () => {
+  it("returns all repos when lastEventAt is empty (no events yet)", () => {
+    const repos = [r("owner/api"), r("owner/worker")];
+    expect(filterOwnRepos(repos, {})).toHaveLength(2);
+  });
+
+  it("keeps only repos that appear in lastEventAt", () => {
+    const repos = [r("owner/api"), r("owner/worker"), r("watcher/other")];
+    const lastEventAt = { "owner/api": "2026-03-07T10:00:00Z", "owner/worker": "2026-03-07T09:00:00Z" };
+    const result = filterOwnRepos(repos, lastEventAt);
+    expect(result.map(x => x.full_name)).toEqual(["owner/api", "owner/worker"]);
+  });
+
+  it("excludes repos not in lastEventAt when events exist", () => {
+    const repos = [r("owner/api"), r("watcher/other")];
+    const lastEventAt = { "owner/api": "2026-03-07T10:00:00Z" };
+    expect(filterOwnRepos(repos, lastEventAt)).toHaveLength(1);
+    expect(filterOwnRepos(repos, lastEventAt)[0].full_name).toBe("owner/api");
+  });
+});
+
+describe("T5: sortByLastEvent", () => {
+  it("sorts repos with most recent event first", () => {
+    const repos = [r("owner/old"), r("owner/new")];
+    const lastEventAt = {
+      "owner/old": "2026-03-06T10:00:00Z",
+      "owner/new": "2026-03-07T10:00:00Z",
+    };
+    const sorted = sortByLastEvent(repos, lastEventAt);
+    expect(sorted[0].full_name).toBe("owner/new");
+    expect(sorted[1].full_name).toBe("owner/old");
+  });
+
+  it("repos without lastEventAt fall back to last_polled_at", () => {
+    const repos = [r("owner/fallback", "2026-03-05T10:00:00Z"), r("owner/new")];
+    const lastEventAt = { "owner/new": "2026-03-07T10:00:00Z" };
+    const sorted = sortByLastEvent(repos, lastEventAt);
+    expect(sorted[0].full_name).toBe("owner/new");
+  });
+
+  it("repos with no time data sort last", () => {
+    const repos = [r("owner/notime"), r("owner/api")];
+    const lastEventAt = { "owner/api": "2026-03-07T10:00:00Z" };
+    const sorted = sortByLastEvent(repos, lastEventAt);
+    expect(sorted[sorted.length - 1].full_name).toBe("owner/notime");
+  });
+});
+
+describe("T5: relativeTime", () => {
+  it("formats under 60 min as Xm ago", () => {
+    const ago30 = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    expect(relativeTime(ago30)).toBe("30m ago");
+  });
+
+  it("formats 1-23 hours as Xh ago", () => {
+    const ago5h = new Date(Date.now() - 5 * 3600 * 1000).toISOString();
+    expect(relativeTime(ago5h)).toBe("5h ago");
+  });
+
+  it("formats exactly 1 day ago as yesterday", () => {
+    const ago1d = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+    expect(relativeTime(ago1d)).toBe("yesterday");
+  });
+
+  it("formats 2+ days as Xd ago", () => {
+    const ago3d = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
+    expect(relativeTime(ago3d)).toBe("3d ago");
+  });
+});

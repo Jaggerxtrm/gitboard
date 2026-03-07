@@ -36,6 +36,14 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
   const ownEvents = events.filter((e) => !SOCIAL_TYPES.has(e.type));
   const socialEvents = events.filter((e) => SOCIAL_TYPES.has(e.type));
 
+  // Derive last own-activity timestamp per repo for sidebar sorting
+  const lastEventAt: Record<string, string> = {};
+  for (const evt of ownEvents) {
+    if (!lastEventAt[evt.repo] || evt.created_at > lastEventAt[evt.repo]) {
+      lastEventAt[evt.repo] = evt.created_at;
+    }
+  }
+
   async function handleSelectEvent(evt: GithubEvent) {
     selectEvent(evt);
     clearRepoUnread(evt.repo);
@@ -71,6 +79,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         stats={repoStats}
         selectedRepos={filter.repos ?? []}
         unreadRepos={unreadRepos}
+        lastEventAt={lastEventAt}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
       />

@@ -12,26 +12,56 @@ interface Props {
   unreadRepos?: Set<string>;
   onSelect: (fullName: string) => void;
   onReset: () => void;
+  lastEventAt?: Record<string, string>;
   contributions?: ContributionDay[];
   onDateClick?: (date: string) => void;
   selectedEvent?: GithubEvent | null;
   selectedEventCommits?: GithubCommit[];
 }
 
-function sortByRecency(repos: GithubRepo[]): GithubRepo[] {
+export function filterOwnRepos(repos: GithubRepo[], lastEventAt: Record<string, string>): GithubRepo[] {
+  if (Object.keys(lastEventAt).length === 0) return repos;
+  return repos.filter((r) => r.full_name in lastEventAt);
+}
+
+export function sortByLastEvent(repos: GithubRepo[], lastEventAt: Record<string, string>): GithubRepo[] {
   return [...repos].sort((a, b) => {
-    if (!a.last_polled_at && !b.last_polled_at) return 0;
-    if (!a.last_polled_at) return 1;
-    if (!b.last_polled_at) return -1;
-    return b.last_polled_at > a.last_polled_at ? 1 : -1;
+    const ta = lastEventAt[a.full_name] ?? a.last_polled_at ?? "";
+    const tb = lastEventAt[b.full_name] ?? b.last_polled_at ?? "";
+    if (!ta && !tb) return 0;
+    if (!ta) return 1;
+    if (!tb) return -1;
+    return tb > ta ? 1 : -1;
   });
 }
 
-export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
+export function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(diff / 86400000);
+  if (days === 1) return "yesterday";
+  return `${days}d ago`;
+}
+
+export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
+  let filtered = filterOwnRepos(repos, lastEventAt);
+  let sorted = sortByLastEvent(filtered, lastEventAt);
+
+  // Hide zero-activity repos when list exceeds 20
+  if (sorted.length > 20) {
+    sorted = sorted.filter((r) => {
+      const stat = stats[r.full_name];
+      return stat && (stat.pushes > 0 || stat.prs_open > 0 || stat.prs_closed > 0);
+    });
+  }
+
   const groups = new Map<string, GithubRepo[]>();
-  for (const repo of sortByRecency(repos)) {
+  for (const repo of sorted) {
     const key = repo.group_name ?? "";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(repo);
@@ -98,6 +128,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
               const isUnread = unreadRepos.has(repo.full_name);
               const slug = repo.full_name.split("/")[1];
               const displayName = repo.display_name ?? slug;
+              const lastAt = lastEventAt[repo.full_name];
 
               return (
                 <button
@@ -136,6 +167,11 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {displayName}
                     </span>
+                    {lastAt && (
+                      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", flexShrink: 0 }}>
+                        {relativeTime(lastAt)}
+                      </span>
+                    )}
                     <a
                       href={`https://github.com/${repo.full_name}`}
                       target="_blank"
