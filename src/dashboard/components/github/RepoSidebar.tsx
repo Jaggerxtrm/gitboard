@@ -49,8 +49,7 @@ export function relativeTime(iso: string): string {
 export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
-  let filtered = filterOwnRepos(repos, lastEventAt);
-  let sorted = sortByLastEvent(filtered, lastEventAt);
+  let sorted = sortByLastEvent(repos, lastEventAt);
 
   // Hide zero-activity repos when list exceeds 20
   if (sorted.length > 20) {
