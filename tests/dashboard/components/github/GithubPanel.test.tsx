@@ -22,7 +22,7 @@ beforeEach(() => {
 describe("GithubPanel (SSR)", () => {
   it("renders All Activity in repo sidebar", () => {
     const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
-    expect(html).toContain("All Activity");
+    expect(html).toContain("Repos");
   });
 
   it("renders stat labels always present", () => {
@@ -39,7 +39,7 @@ describe("GithubPanel (SSR)", () => {
 
   it("renders repo sidebar with All Activity when no repos", () => {
     const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
-    expect(html).toContain("All Activity");
+    expect(html).toContain("Repos");
   });
 
   it("does not render a sliding right detail panel", () => {

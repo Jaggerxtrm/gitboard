@@ -49,14 +49,31 @@ export function relativeTime(iso: string): string {
 
 export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, ownerUsername = null, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const [width, setWidth] = useState(240);
+  const [width, setWidth] = useState(() => {
+    try {
+      const saved = typeof window !== "undefined" ? window.localStorage?.getItem("sidebar-width") : null;
+      return saved ? parseInt(saved, 10) : 240;
+    } catch {
+      return 240;
+    }
+  });
+
+  function persistWidth(w: number) {
+    setWidth(w);
+    try { window.localStorage?.setItem("sidebar-width", String(w)); } catch { /* ignore */ }
+  }
 
   function handleResizeMouseDown(e: React.MouseEvent) {
     e.preventDefault();
     const startX = e.clientX;
     const startW = width;
-    const onMove = (ev: MouseEvent) => setWidth(Math.max(160, Math.min(480, startW + ev.clientX - startX)));
+    let last = startW;
+    const onMove = (ev: MouseEvent) => {
+      last = Math.max(160, Math.min(480, startW + ev.clientX - startX));
+      setWidth(last);
+    };
     const onUp = () => {
+      persistWidth(last);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -106,26 +123,29 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <button
           aria-pressed={allActive}
+          title="Show all repos"
           onClick={onReset}
-          onMouseEnter={() => setHoveredKey("__all__")}
-          onMouseLeave={() => setHoveredKey(null)}
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--spacing-sm)",
-            padding: "10px 16px",
-            background: allActive ? "var(--surface-tertiary)" : hoveredKey === "__all__" ? "rgba(255,255,255,0.04)" : "transparent",
+            height: 32,
+            padding: "0 16px",
+            background: "var(--surface-secondary)",
             border: "none",
+            borderBottom: "1px solid var(--border-subtle)",
             borderLeft: allActive ? "2px solid var(--event-push)" : "2px solid transparent",
-            color: "var(--text-primary)",
-            cursor: "pointer",
-            fontSize: "var(--text-base)",
+            color: allActive ? "var(--text-primary)" : "var(--text-muted)",
+            cursor: allActive ? "default" : "pointer",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
             textAlign: "left",
             width: "100%",
-            transition: "var(--transition-fast)",
+            flexShrink: 0,
           }}
         >
-          All Activity
+          Repos
         </button>
 
         {Array.from(groups.entries()).map(([groupName, groupRepos]) => (

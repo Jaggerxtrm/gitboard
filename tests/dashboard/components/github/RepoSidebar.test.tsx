@@ -20,7 +20,7 @@ describe("RepoSidebar", () => {
     const html = renderToStaticMarkup(
       <RepoSidebar repos={repos} stats={stats} selectedRepos={[]} onSelect={noop} onReset={noop} />
     );
-    expect(html).toContain("All Activity");
+    expect(html).toContain("Repos");
   });
 
   it("renders display_name for repos that have it", () => {
