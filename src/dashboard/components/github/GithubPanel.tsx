@@ -15,7 +15,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     selectedEventCommits,
     repos,
     repoStats,
-    contributions,
     summary,
     filter,
     loading,
@@ -57,7 +56,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* Left: Repo Sidebar — includes inline event detail + heatmap at bottom */}
+      {/* Left: Repo Sidebar — clean repo list only */}
       <RepoSidebar
         repos={repos}
         stats={repoStats}
@@ -65,10 +64,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         unreadRepos={unreadRepos}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
-        selectedEvent={selectedEvent}
-        selectedEventCommits={selectedEventCommits}
-        contributions={contributions}
-        onDateClick={(d) => setFilter({ from: d, to: d })}
       />
 
       {/* Center: Activity Timeline (full remaining width) */}

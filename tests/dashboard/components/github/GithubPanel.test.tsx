@@ -36,16 +36,6 @@ describe("GithubPanel (SSR)", () => {
     expect(html.toLowerCase()).toContain("no events");
   });
 
-  it("renders contribution empty state when no data", () => {
-    const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
-    expect(html.toLowerCase()).toContain("no contribution data");
-  });
-
-  it("renders commit detail placeholder when no event selected", () => {
-    const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
-    expect(html.toLowerCase()).toContain("select an event");
-  });
-
   it("renders repo sidebar with All Activity when no repos", () => {
     const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
     expect(html).toContain("All Activity");
@@ -56,8 +46,15 @@ describe("GithubPanel (SSR)", () => {
     expect(html).not.toContain("--detail-width");
   });
 
-  it("renders contribution heatmap relocated to sidebar", () => {
+  // Heatmap deferred to v0.8.0 — not rendered in GithubPanel
+  it("does not render contribution heatmap (deferred to v0.8.0)", () => {
     const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
-    expect(html.toLowerCase()).toContain("no contribution data");
+    expect(html.toLowerCase()).not.toContain("no contribution data");
+  });
+
+  // EventDetail sidebar accordion deferred — event detail lives in ActivityTimeline only
+  it("does not render EventDetail placeholder in panel (deferred)", () => {
+    const html = renderToStaticMarkup(<GithubPanel onMount={noop} />);
+    expect(html.toLowerCase()).not.toContain("select an event");
   });
 });
