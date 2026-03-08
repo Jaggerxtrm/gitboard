@@ -1,9 +1,24 @@
-# Agent Forge (OmniForge)
+# Gitboard
 
-CLI/TUI orchestrator for AI agents managing Mercury stack services (52 containers, 5 stacks).
+Self-hosted GitHub activity dashboard. Polls your repos via the GitHub API and shows a live, filterable feed of events, commits, PRs, and contribution data — all in one place.
 
-**Status:** v0.7.2 — OmniForge UX overhaul (inline commit accordion, resizable sidebar, social strip)
-**Planned rename:** → `omniforge` (see [ROADMAP.md](./ROADMAP.md) and [docs/omniforge-architecture.md](./docs/omniforge-architecture.md))
+**v0.7.2** · Bun · TypeScript · React 19 · SQLite
+
+---
+
+## What it does
+
+- **Live activity feed** — PushEvents, PRs, issues, releases streamed in real-time via WebSocket
+- **Inline commit accordion** — expand any push to see full commit list with subject + collapsible body
+- **Repo sidebar** — repos sorted by last activity, relative timestamps, resizable drag handle
+- **Stats bar** — 32px single-line summary: events / pushes / PRs / commits / active repos
+- **Social strip** — starred/forked/member events separated into a collapsed "★ N starred this week" strip; repo names link directly to GitHub
+- **Contribution heatmap** — per-day contribution grid (sidebar-pinned)
+- **Filters** — click any repo to filter the timeline; reset to see everything
+- **Auto-discovery** — on first run, discovers your repos via `gh repo list` with REST fallback
+- **Enrichment** — PushEvents get full commit messages + diff stats; PRs get title, body, changed files
+
+---
 
 ## Tech Stack
 
@@ -11,123 +26,125 @@ CLI/TUI orchestrator for AI agents managing Mercury stack services (52 container
 |-------|-----------|
 | Runtime | Bun (not Node) |
 | Language | TypeScript (strict) |
-| Backend | Hono (HTTP + WebSocket), bun:sqlite |
+| Backend | Hono, bun:sqlite (WAL mode) |
 | Frontend | React 19, Vite 7, Tailwind CSS v4, Radix UI |
+| Virtualisation | @tanstack/react-virtual (dynamic row heights) |
 | State | Zustand v5 |
-| Testing | Vitest |
+| Icons | @primer/octicons-react |
+| Testing | Vitest (210 tests) |
 | Container | Docker / rootless Podman |
-| Issue Tracking | beads (`bd`) with Dolt backend |
 
-## Prerequisites
-
-- Bun v1.2+
-- GitHub CLI (`gh`) authenticated, or `GITHUB_TOKEN` env var set
-- Docker or rootless Podman (for containerized deployment)
+---
 
 ## Quick Start
 
+### Prerequisites
+
+- Bun v1.2+
+- GitHub CLI (`gh`) authenticated **or** `GITHUB_TOKEN` env var
+
+### Dev mode
+
 ```bash
 bun install
-bun run dev           # backend (API + GitHub poller) on :3000
-bun run dev:dashboard # dashboard HMR on :5173 (proxies /api → :3000)
+bun run dev            # API server + GitHub poller on :3000
+bun run dev:dashboard  # Vite HMR on :5173 (proxies /api → :3000)
 ```
 
-### Docker (recommended)
+Open `http://localhost:5173` in development, `http://localhost:3000` in production.
+
+### Docker (recommended for production)
 
 ```bash
-make up        # build + start (auto-resolves GITHUB_TOKEN from gh auth token)
-make logs      # follow logs
-make rebuild   # force full rebuild (no layer cache)
-make down      # stop + remove containers
+make build    # build image + start container (named: gitboard)
+make up       # start without rebuilding
+make logs     # follow logs
+make restart  # restart without rebuild
+make down     # stop + remove
+make rebuild  # full rebuild, no layer cache
 ```
 
-Dashboard at `http://localhost:3000` (production build served by the API process).
+The container is named `gitboard` and auto-restarts unless stopped.
+
+---
 
 ## Project Structure
 
 ```
 src/
-├── core/                    # Data layer (no HTTP)
-│   ├── store.ts             # SQLite init, WAL mode, all 6 tables
-│   ├── github-store.ts      # GitHub CRUD: events, commits, repos, stats
-│   ├── github-poller.ts     # GitHub API ingestion + Compare/PR enrichment
-│   └── github-discover.ts   # Repo auto-discovery (gh CLI → REST fallback)
-├── api/                     # HTTP + WebSocket server (Hono)
-│   ├── server.ts            # createApp, startServer, CORS, health check
-│   ├── routes/github.ts     # 9 REST endpoints under /api/github/
-│   └── ws/                  # ChannelRegistry pub/sub, WsHandler lifecycle
-├── dashboard/               # React SPA (Vite root)
-│   ├── App.tsx              # OmniForge topbar, tab nav
-│   ├── components/github/
-│   │   ├── GithubPanel.tsx          # 2-column layout: sidebar + timeline
-│   │   ├── ActivityTimeline.tsx     # Virtualised feed, day headers, inline commit accordion
-│   │   ├── RepoSidebar.tsx          # Resizable repo list, sorted by last activity, relative timestamps
-│   │   ├── StatsHeader.tsx          # 32px single-line metric bar with octicons
-│   │   ├── EventDetail.tsx          # Diffstat bar, expandable commits (deferred from main layout)
-│   │   ├── ContributionHeatmap.tsx  # Radix Tooltip per cell (deferred to v0.8.0)
-│   │   └── EventIcon.tsx            # Octicon-per-event-type mapping
-│   ├── hooks/               # useGithubActivity, useWebSocket
-│   ├── lib/                 # ApiClient singleton, WsClient with backoff
-│   ├── stores/github.ts     # Zustand: events, commits, repos, repoStats, unreadRepos
-│   └── styles/globals.css   # CSS token system (--surface-*, --text-*, --accent-*)
-├── types/github.ts          # Shared TypeScript types
-└── index.ts                 # Entry point: DB + server + poller wired together
+├── index.ts                  # Entry point — wires DB + server + poller
+├── types/github.ts           # Shared TypeScript types
+├── core/
+│   ├── store.ts              # SQLite init, WAL mode, schema (6 tables)
+│   ├── github-store.ts       # CRUD: events, commits, repos, stats
+│   ├── github-poller.ts      # GitHub API ingestion + enrichment
+│   └── github-discover.ts    # Repo auto-discovery
+├── api/
+│   ├── server.ts             # Hono app, Bun.serve, CORS, health
+│   ├── routes/github.ts      # 9 REST endpoints under /api/github/
+│   └── ws/                   # WebSocket pub/sub (ChannelRegistry + WsHandler)
+└── dashboard/                # React SPA (Vite root: src/dashboard/)
+    ├── App.tsx
+    ├── components/github/
+    │   ├── GithubPanel.tsx           # Main layout: sidebar + timeline
+    │   ├── ActivityTimeline.tsx      # Virtualised feed, day headers, commit accordion
+    │   ├── RepoSidebar.tsx           # Resizable repo list, activity-sorted
+    │   ├── StatsHeader.tsx           # 32px stats bar with octicons
+    │   ├── EventDetail.tsx           # Diffstat + expandable commits
+    │   ├── ContributionHeatmap.tsx   # Per-day contribution grid
+    │   └── EventIcon.tsx             # Octicon per event type
+    ├── hooks/                # useGithubActivity, useWebSocket
+    ├── lib/                  # ApiClient singleton, WsClient (exponential backoff)
+    ├── stores/github.ts      # Zustand store
+    └── styles/globals.css    # CSS token system (--surface-*, --text-*, --accent-*)
 ```
 
-## Dashboard Features (v0.7.2)
+---
 
-| Feature | Description |
-|---------|-------------|
-| Repo sidebar | Resizable (drag handle), sorted by last activity, relative timestamps, own repos only |
-| Activity timeline | Virtualised, day-grouped, PushEvent accordion with inline commit list |
-| Commit accordion | SHA link → subject → expandable `message_full` body, 20-line soft cap |
-| Stats bar | 32px single-line, octicons per stat, monospace numbers |
-| Social strip | WatchEvent/ForkEvent/MemberEvent separated into collapsed "★ N starred this week" strip |
-| Keyboard nav | `j`/`k` to move between events, `Escape` to deselect |
-
-## GitHub Enrichment
-
-| Event type | Additional API call | Data retrieved |
-|---|---|---|
-| `PushEvent` | `GET /repos/{owner}/{repo}/compare/{before}...{head}` | Full commit list, `message_full`, aggregate `+additions −deletions` |
-| `PullRequestEvent` | `GET /repos/{owner}/{repo}/pulls/{number}` | `title`, `body`, `html_url`, `additions`, `deletions`, `changed_files` |
-
-## API Endpoints
+## API
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
-| GET | `/api/github/events` | Paginated events with filters |
+| GET | `/api/github/events` | Paginated events (filters: `repo`, `type`, `from`) |
 | GET | `/api/github/events/:id` | Single event |
-| GET | `/api/github/commits` | Commits (filterable by `repo`, `event_id`, `from`) |
+| GET | `/api/github/commits` | Commits (filters: `repo`, `event_id`, `from`) |
 | GET | `/api/github/commits/:sha` | Single commit |
 | GET | `/api/github/repos` | Tracked repos |
 | GET | `/api/github/repos/stats` | 24h push/PR counts per repo |
 | GET | `/api/github/contributions` | Contribution heatmap data |
-| GET | `/api/github/summary` | Aggregate stats (events/pushes/PRs/commits/repos) |
+| GET | `/api/github/summary` | Aggregate stats |
 
-## Commands
+WebSocket: `ws://localhost:3000/ws` — subscribe to `github:activity` for live `new_event` / `new_commits` pushes.
 
-```bash
-bun run dev           # API server + poller
-bun run dev:dashboard # Vite HMR
-bun run lint          # TypeScript type check
-bun run test          # Vitest (all tests, one-shot)
-bun run test:watch    # Vitest watch mode
-bun run build:dashboard # Production build → dist/dashboard/
-```
+---
+
+## GitHub Data Enrichment
+
+| Event | Extra API call | Data added |
+|-------|---------------|------------|
+| `PushEvent` | `GET /compare/{before}...{head}` | Full commit list, `message_full`, `+additions −deletions` |
+| `PullRequestEvent` | `GET /pulls/{number}` | `title`, `body`, `html_url`, `additions`, `deletions`, `changed_files` |
+
+---
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite database path |
+| `GITHUB_TOKEN` | (`gh auth token`) | GitHub API auth |
 | `PORT` | `3000` | API server port |
-| `GITHUB_TOKEN` | (from `gh auth token`) | GitHub API auth |
+| `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite database path |
 
-## Reference
+---
 
-- [`CHANGELOG.md`](./CHANGELOG.md) — version history
-- [`ROADMAP.md`](./ROADMAP.md) — planned improvements
-- [`docs/omniforge-architecture.md`](./docs/omniforge-architecture.md) — multi-repo split guide (forge-core / gitboard / forge)
-- `docs/` — full specs: `PRD.md`, `github-dashboard.md`, `dashboard-design.md`
+## Commands
+
+```bash
+bun run dev              # API + poller
+bun run dev:dashboard    # Vite HMR
+bun run lint             # TypeScript check (no emit)
+bun run test             # Vitest one-shot
+bun run test:watch       # Vitest watch
+bun run build:dashboard  # Production build → dist/dashboard/
+```
