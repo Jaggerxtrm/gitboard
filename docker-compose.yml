@@ -1,5 +1,6 @@
 services:
   gitboard:
+    container_name: gitboard
     build: .
     ports:
       - "3000:3000"
