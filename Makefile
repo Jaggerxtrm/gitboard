@@ -2,7 +2,7 @@
 
 # ── Config ──────────────────────────────────────────────────────────────────────
 COMPOSE      := docker compose
-SERVICE      := agent-forge
+SERVICE      := gitboard
 TOKEN        := $(shell gh auth token 2>/dev/null)
 DOCKER_HOST  ?= unix:///run/user/$(shell id -u)/podman/podman.sock
 
