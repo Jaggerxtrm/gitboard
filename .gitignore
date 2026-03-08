@@ -8,3 +8,8 @@ dist/
 # Dolt database files (added by bd init)
 .dolt/
 .worktrees/
+.seeds
+.overstory
+.mulch
+data/
+
