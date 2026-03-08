@@ -124,7 +124,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
                     <StarIcon size={11} />
                     <span style={{ color: "var(--text-muted)" }}>{e.actor}</span>
                     <span>starred</span>
-                    <span style={{ color: "var(--text-primary)" }}>{e.repo}</span>
+                    <a href={`https://github.com/${e.repo}`} target="_blank" rel="noreferrer" style={{ color: "var(--text-primary)", textDecoration: "none" }}>{e.repo}</a>
                   </div>
                 ))}
               </div>
