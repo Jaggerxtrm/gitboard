@@ -13,3 +13,8 @@ dist/
 .mulch
 data/
 
+.gitnexus
+
+# unit.ai tracing / temp files
+.unitai/
+e4494c9598b9

@@ -5,7 +5,6 @@ import { useGithubActivity } from "../../hooks/useGithubActivity.ts";
 import { StatsHeader } from "./StatsHeader.tsx";
 import { RepoSidebar } from "./RepoSidebar.tsx";
 import { ActivityTimeline } from "./ActivityTimeline.tsx";
-import { apiClient } from "../../lib/client.ts";
 import type { GithubEvent } from "../../../types/github.ts";
 
 const SOCIAL_TYPES = new Set(["WatchEvent", "ForkEvent", "MemberEvent"]);
@@ -18,7 +17,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
   const {
     events,
     selectedEvent,
-    selectedEventCommits,
     repos,
     repoStats,
     summary,
@@ -27,7 +25,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     error,
     unreadRepos,
     selectEvent,
-    setSelectedEventCommits,
     setFilter,
     resetFilter,
     clearRepoUnread,
@@ -45,15 +42,9 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     }
   }
 
-  async function handleSelectEvent(evt: GithubEvent) {
+  function handleSelectEvent(evt: GithubEvent) {
     selectEvent(evt);
     clearRepoUnread(evt.repo);
-    try {
-      const res = await apiClient.getCommits(undefined, undefined, evt.id);
-      setSelectedEventCommits(res.data);
-    } catch {
-      setSelectedEventCommits([]);
-    }
   }
 
   if (loading) {
@@ -144,3 +135,4 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     </div>
   );
 }
+
