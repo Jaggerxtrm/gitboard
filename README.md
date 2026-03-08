@@ -1,9 +1,9 @@
-# Agent Forge
+# Agent Forge (OmniForge)
 
 CLI/TUI orchestrator for AI agents managing Mercury stack services (52 containers, 5 stacks).
 
-**Status:** v0.7.1 — GitHub Activity Dashboard with full event enrichment (Compare + PR APIs)
-**Planned rename:** → `omniforge` (see [ROADMAP.md](./ROADMAP.md))
+**Status:** v0.7.2 — OmniForge UX overhaul (inline commit accordion, resizable sidebar, social strip)
+**Planned rename:** → `omniforge` (see [ROADMAP.md](./ROADMAP.md) and [docs/omniforge-architecture.md](./docs/omniforge-architecture.md))
 
 ## Tech Stack
 
@@ -16,6 +16,7 @@ CLI/TUI orchestrator for AI agents managing Mercury stack services (52 container
 | State | Zustand v5 |
 | Testing | Vitest |
 | Container | Docker / rootless Podman |
+| Issue Tracking | beads (`bd`) with Dolt backend |
 
 ## Prerequisites
 
@@ -56,14 +57,14 @@ src/
 │   ├── routes/github.ts     # 9 REST endpoints under /api/github/
 │   └── ws/                  # ChannelRegistry pub/sub, WsHandler lifecycle
 ├── dashboard/               # React SPA (Vite root)
-│   ├── App.tsx              # Gradient topbar, underline tab nav
+│   ├── App.tsx              # OmniForge topbar, tab nav
 │   ├── components/github/
-│   │   ├── GithubPanel.tsx          # Three-column layout orchestrator
-│   │   ├── ActivityTimeline.tsx     # Virtualised feed, day headers, Radix Accordion
-│   │   ├── RepoSidebar.tsx          # Repo list, unread dots, 24h stats
-│   │   ├── EventDetail.tsx          # Slide-in panel, diffstat bar, Radix Collapsible commits
-│   │   ├── ContributionHeatmap.tsx  # Radix Tooltip per cell, month/day labels
-│   │   ├── StatsHeader.tsx          # Inline metric strip
+│   │   ├── GithubPanel.tsx          # 2-column layout: sidebar + timeline
+│   │   ├── ActivityTimeline.tsx     # Virtualised feed, day headers, inline commit accordion
+│   │   ├── RepoSidebar.tsx          # Resizable repo list, sorted by last activity, relative timestamps
+│   │   ├── StatsHeader.tsx          # 32px single-line metric bar with octicons
+│   │   ├── EventDetail.tsx          # Diffstat bar, expandable commits (deferred from main layout)
+│   │   ├── ContributionHeatmap.tsx  # Radix Tooltip per cell (deferred to v0.8.0)
 │   │   └── EventIcon.tsx            # Octicon-per-event-type mapping
 │   ├── hooks/               # useGithubActivity, useWebSocket
 │   ├── lib/                 # ApiClient singleton, WsClient with backoff
@@ -73,16 +74,23 @@ src/
 └── index.ts                 # Entry point: DB + server + poller wired together
 ```
 
-## GitHub Enrichment
+## Dashboard Features (v0.7.2)
 
-The poller fetches full event details for every new event — the raw Events API returns truncated payloads:
+| Feature | Description |
+|---------|-------------|
+| Repo sidebar | Resizable (drag handle), sorted by last activity, relative timestamps, own repos only |
+| Activity timeline | Virtualised, day-grouped, PushEvent accordion with inline commit list |
+| Commit accordion | SHA link → subject → expandable `message_full` body, 20-line soft cap |
+| Stats bar | 32px single-line, octicons per stat, monospace numbers |
+| Social strip | WatchEvent/ForkEvent/MemberEvent separated into collapsed "★ N starred this week" strip |
+| Keyboard nav | `j`/`k` to move between events, `Escape` to deselect |
+
+## GitHub Enrichment
 
 | Event type | Additional API call | Data retrieved |
 |---|---|---|
-| `PushEvent` | `GET /repos/{owner}/{repo}/compare/{before}...{head}` | Full commit list (`message`, `message_full`), aggregate `+additions −deletions files` |
+| `PushEvent` | `GET /repos/{owner}/{repo}/compare/{before}...{head}` | Full commit list, `message_full`, aggregate `+additions −deletions` |
 | `PullRequestEvent` | `GET /repos/{owner}/{repo}/pulls/{number}` | `title`, `body`, `html_url`, `additions`, `deletions`, `changed_files` |
-
-Falls back to payload data if additional calls fail (private repos, rate limit).
 
 ## API Endpoints
 
@@ -120,5 +128,6 @@ bun run build:dashboard # Production build → dist/dashboard/
 ## Reference
 
 - [`CHANGELOG.md`](./CHANGELOG.md) — version history
-- [`ROADMAP.md`](./ROADMAP.md) — planned improvements (v0.7.2 UX overhaul, v0.8.0 multi-panel)
+- [`ROADMAP.md`](./ROADMAP.md) — planned improvements
+- [`docs/omniforge-architecture.md`](./docs/omniforge-architecture.md) — multi-repo split guide (forge-core / gitboard / forge)
 - `docs/` — full specs: `PRD.md`, `github-dashboard.md`, `dashboard-design.md`

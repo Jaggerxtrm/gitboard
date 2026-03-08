@@ -1,245 +1,200 @@
 # Agent Rules & Guidelines
 
 ## BEFORE ANYTHING ELSE
-Run `bd onboard` when starting work in a new repository. Skip if `.beads/` exists.
 
-## Commit Message Format
-**Single-line commits only.** Git hook adds JIRA ID from branch name automatically.
+1. Run `bd dolt pull` to sync the issue tracker from remote.
+2. Skip `bd onboard` — `.beads/` already exists in this repo.
+3. Read `CLAUDE.md` for project-specific constraints (Bun runtime, Hono, Zustand, etc.).
+
+---
+
+## Rule 1: Issue Tracking with bd (beads)
+
+**Use bd for ALL task tracking. NEVER use TodoWrite, markdown TODOs, or other tools.**
+
+### Core commands
+
 ```bash
-git commit -m "Add authentication middleware"  # ✅ Correct
+# Find work
+bd ready                          # Show unblocked issues ready to work
+bd list --status=open             # All open issues
+bd show <id>                      # Detailed view with dependencies
+
+# Create
+bd create --title="Summary" --description="Why this exists and what to do" --type=task --priority=2
+
+# types: bug|feature|task|epic|chore
+# Priority: 0=critical, 1=high, 2=medium (default), 3=low, 4=backlog
+
+# Claim and progress
+bd update <id> --status=in_progress
+bd update <id> --notes="progress note"
+
+# Complete
+bd close <id>
+bd close <id> --reason="explanation"
+bd close <id1> <id2> <id3>        # close multiple at once
+
+# Dependencies
+bd dep add <issue> <depends-on>   # issue is blocked by depends-on
+bd blocked                        # show all blocked issues
+
+# Sync
+bd dolt pull                      # pull from remote
+bd dolt push                      # push to remote
 ```
 
-## Rule 1: Permissions
+### Workflow
+1. `bd dolt pull` — sync first
+2. `bd ready` — find available work
+3. `bd update <id> --status=in_progress` — claim before touching code
+4. Implement → test → commit
+5. `bd close <id>` — mark done
+6. `bd dolt pull` again before final commit
+
+**Create the beads issue BEFORE writing code.**
+
+---
+
+## Rule 2: Permissions
+
 All Bash commands allowed. `rm` requires user approval.
 
-## Rule 2: Issue Tracking with bd
-**Use bd for ALL task tracking. NEVER use TodoWrite or TODO comments.**
-
-```bash
-bd ready                              # Show unblocked work
-bd create "Title" -t task -p 1 -d "Description"  # Create issue
-bd update ID --status in_progress     # Claim work
-bd close ID --reason "Done"           # Complete work
-```
-
-**Types:** `bug`, `feature`, `task`, `epic`, `chore`
-**Priorities:** `0` (critical) → `4` (backlog)
-**Statuses:** `open`, `in_progress`, `blocked`, `closed`
-
-Always commit `.beads/issues.jsonl` with code changes.
-
-## Rule 3: Git Branch Strategy
-**NEVER commit directly to main. ALL changes go through feature branch + PR.**
-
-```bash
-git checkout -b ISSUE-ID              # Create branch from main
-# ... make changes ...
-git push -u origin ISSUE-ID           # Push to remote
-gh pr create                          # Open PR
-# Wait for checks to pass, then ask user to review
-```
-
-After PR merged, delete branch: `git branch -d ISSUE-ID && git push origin --delete ISSUE-ID`
-
-## Rule 4: User Review Before Execution
-**Request approval before working on any bead issue or installing dependencies.**
-
-```
-Ready to work on [ID]: [Title]
-Plan: [bullet points]
-Files to modify: [list]
-Proceed? [Yes/No]
-```
-
-## Rule 5: Context Usage Reporting
-Report after every response:
-```
 ---
-Context: XX% used (USED/BUDGET tokens)
-```
 
-## Rule 6: Git Commit on Every Change
-Commit after every file change. Include `.beads/issues.jsonl`.
+## Rule 3: Git Workflow
+
 ```bash
-git commit -m "Brief description (ISSUE-ID)"
-```
-Push automatically on feature branches, never on main without approval.
+# Feature branch from main
+git checkout -b feat/short-description
 
-## Rule 7: Monitoring
-Use exponential backoff when monitoring processes (5s → 10s → 20s → 40s → 60s cap).
-Run monitors as background processes when possible.
+# Commit
+git commit -m "feat(scope): description"
+
+# Merge to main locally when done (ephemeral branch — no upstream push)
+git checkout main && git merge --no-ff feat/short-description
+git branch -d feat/short-description
+```
+
+Never force-push main. Never skip hooks (`--no-verify`).
+
+---
+
+## Rule 4: Code Search with Serena LSP + GitNexus
+
+### Serena (primary — surgical code reads and edits)
+
+```
+get_symbols_overview   — map a file structure before reading
+find_symbol            — read a specific function/class body
+search_for_pattern     — flexible regex across files
+replace_symbol_body    — edit a symbol atomically
+insert_after_symbol    — add code after a symbol
+```
+
+Never read full files over ~300 lines. Use `get_symbols_overview` first.
+
+For large JSX rewrites, `replace_symbol_body` can leave orphaned code on complex components.
+Use Python string replace or a full file write for safety:
+
+```python
+python3 -c "
+c = open('src/file.tsx').read()
+c = c.replace(old, new, 1)
+open('src/file.tsx', 'w').write(c)
+"
+```
+
+### GitNexus (knowledge graph — architecture and impact analysis)
+
+```
+mcp__gitnexus__impact         — blast radius before changing X
+mcp__gitnexus__query          — query the knowledge graph
+mcp__gitnexus__context        — get context for a symbol or file
+mcp__gitnexus__detect_changes — what changed recently
+mcp__gitnexus__cypher         — raw Cypher query on the graph
+```
+
+Use GitNexus before large refactors or when unsure what a change will break.
+
+---
+
+## Rule 5: TDD — Tests First
+
+Write failing tests before implementing:
+
+```bash
+bunx vitest run tests/dashboard/components/github/MyComponent.test.tsx  # confirm fail
+bun run test   # implement until green
+bun run lint   # type check
+```
+
+**SSR + Zustand gotcha:** `useSyncExternalStore` in SSR mode does not reflect state
+set in `beforeEach`. Use pure logic unit tests for store-dependent behaviour —
+test the filter/sort/format functions directly, not the rendered output.
+
+---
+
+## Rule 6: Docker Lifecycle
+
+```bash
+make rebuild    # full rebuild (no cache) + restart
+make up         # start (cached build)
+make logs       # follow logs
+make down       # stop + remove
+```
+
+After any dashboard or API change, `make rebuild` to verify in the container.
+
+---
+
+## Rule 7: Secrets
+
+Never print secret values. Use placeholders: `TOKEN=<redacted>`.
+
+---
 
 ## Rule 8: Parallel Work
-Each parallel agent uses its own git worktree: `git worktree add ../REPO-ISSUE-ID -b ISSUE-ID main`
 
-## Rule 9: Prefer Static Types
-New projects: Use Go, Kotlin, TypeScript, or Rust.
-Scripting languages: Always use type hints (Python) or TypeScript (not JS).
+Each parallel agent uses its own git worktree:
 
-## Rule 10: Code Search with auggie-mcp
-**Use `mcp__auggie-mcp__codebase-retrieval` as PRIMARY tool for code understanding.**
-
-- Semantic search: "Where is authentication handled?"
-- Before editing: Query all related symbols in one call
-- Understanding architecture: "How does X connect to Y?"
-
-**Use Grep/Glob instead for:** exact string matching, finding all references to a known identifier, file pattern matching.
-
-## Rule 11: Protect Secrets
-**Never print secret values unless explicitly asked.**
-
-Secrets include: API keys, tokens, passwords, private keys, credentials, connection strings with passwords.
-
-When encountering secrets:
-- Confirm the secret exists without revealing the value
-- Use placeholders: `API_KEY=<redacted>` or `password=***`
-- If user explicitly asks to see the value, comply with a warning
-
-## Rule 12: JIRA-Named Repository Handling
-**When working in a JIRA-named repository (like "AGENTS"), do NOT attempt to create new git repositories.**
-
-Instead:
-- Work only within existing repositories found in the workspace
-- Commit changes to the appropriate sub-repositories within the workspace
-- Respect the existing git structure and repository boundaries
-- Use `git status` and `git remote -v` to identify the correct repository context before making commits
-
-## Rule 13: Ask Clarifying Questions
-**Ask the user questions before starting complex tasks to ensure alignment.**
-
-When to ask:
-- Ambiguous requirements or multiple valid approaches
-- Architectural decisions (libraries, patterns, technologies)
-- Tasks affecting existing behavior or multiple files
-- Unclear scope or missing details
-
-Keep questions focused and actionable. Don't ask about obvious implementation details.
-
-## Landing the Plane
-When user says "land the plane":
-1. File beads for remaining work
-2. Run quality gates (tests, lint) if code changed
-3. Close finished issues
-4. Commit and push beads changes
-5. Clean up: `git stash clear && git remote prune origin`
-6. Provide session summary and recommended next prompt (first line must be: `please read and apply /Users/mikelady/dev/AGENTS/AGENTS.md`)
-
-## Pass the Baton
-When user says "pass the baton": Execute "Land the Plane", then spawn a new agent with continuation prompt using the Task tool.
+```bash
+git worktree add ../agent-forge-ISSUE-ID -b feat/ISSUE-ID main
+```
 
 ---
 
-**Full documentation with examples:** See [AGENTS-REFERENCE.md](./AGENTS-REFERENCE.md)
+## Rule 9: Monitoring
 
-<!-- BEGIN BEADS INTEGRATION -->
-## Issue Tracking with bd (beads)
+Exponential backoff when polling: 5s → 10s → 20s → 40s → 60s cap.
+Run monitors as background processes when possible.
 
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+---
 
-### Why bd?
+## Session Close Protocol
 
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Dolt-powered version control with native sync
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
+Before saying "done":
 
-### Quick Start
-
-**Check for ready work:**
-
-```bash
-bd ready --json
+```
+[ ] git status              — check what changed
+[ ] git add <files>         — stage code changes
+[ ] bd dolt pull            — sync beads before commit
+[ ] git commit -m "..."     — commit
+[ ] bd close <ids>          — close completed issues
 ```
 
-**Create new issues:**
+---
 
-```bash
-bd create "Issue title" --description="Detailed context" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" --description="What this issue is about" -p 1 --deps discovered-from:bd-123 --json
-```
+## Key Project Constraints
 
-**Claim and update:**
+- **Runtime:** Bun only — no Node APIs, no better-sqlite3
+- **HTTP:** Hono only — no Express/Fastify
+- **Icons:** @primer/octicons-react only — no emoji, no custom SVGs
+- **CSS:** var(--*) custom properties only — no hardcoded hex values
+- **State:** Zustand — no Redux, no Context API
+- **Virtualizer:** @tanstack/react-virtual — use measureElement for dynamic row heights
+- **Testing:** Vitest — environment node for backend, happy-dom for dashboard
 
-```bash
-bd update <id> --claim --json
-bd update bd-42 --priority 1 --json
-```
+---
 
-**Complete work:**
-
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
-
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task atomically**: `bd update <id> --claim`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-
-### Auto-Sync
-
-bd automatically syncs via Dolt:
-
-- Each write auto-commits to Dolt history
-- Use `bd dolt push`/`bd dolt pull` for remote sync
-- No manual export/import needed!
-
-### Important Rules
-
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-
-For more details, see README.md and docs/QUICKSTART.md.
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-<!-- END BEADS INTEGRATION -->
+**Full reference:** CLAUDE.md · ROADMAP.md · CHANGELOG.md · docs/omniforge-architecture.md
