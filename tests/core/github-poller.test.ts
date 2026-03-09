@@ -136,9 +136,18 @@ const fakePRResponse = {
   title: "Fix bug",
   body: "Fixes the thing",
   html_url: "https://github.com/owner/repo-a/pull/42",
+  state: "open",
+  merged: false,
+  merged_at: null,
+  closed_at: null,
+  user: { login: "bob" },
   additions: 30,
   deletions: 5,
   changed_files: 2,
+  comments: 0,
+  labels: [],
+  created_at: "2026-03-06T11:00:00Z",
+  updated_at: "2026-03-06T11:30:00Z",
 };
 
 // A PR event that includes the PR number (needed for enrichment)

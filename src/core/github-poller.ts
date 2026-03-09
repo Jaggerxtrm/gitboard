@@ -1,5 +1,13 @@
 import type { Database } from "bun:sqlite";
-import { insertEvent, insertCommit, ensureRepo, updateEventEnrichment } from "./github-store.ts";
+import {
+  insertEvent,
+  insertCommit,
+  ensureRepo,
+  updateEventEnrichment,
+  upsertPr,
+  upsertIssue,
+  getRepos,
+} from "./github-store.ts";
 import type { GithubEvent, GithubCommit } from "./github-store.ts";
 
 export interface RawGithubCommit {
@@ -258,16 +266,155 @@ export class GithubPoller {
   private async fetchPullRequest(
     repo: string,
     number: number
-  ): Promise<{ title: string; body: string | null; html_url: string; additions: number; deletions: number; changed_files: number } | null> {
+  ): Promise<{
+    title: string;
+    body: string | null;
+    html_url: string;
+    state: string;
+    merged: boolean;
+    merged_at: string | null;
+    closed_at: string | null;
+    user: { login: string };
+    additions: number;
+    deletions: number;
+    changed_files: number;
+    comments: number;
+    labels: Array<{ name: string }>;
+    created_at: string;
+    updated_at: string;
+  } | null> {
     interface PRResponse {
       title: string;
       body: string | null;
       html_url: string;
+      state: string;
+      merged: boolean;
+      merged_at: string | null;
+      closed_at: string | null;
+      user: { login: string };
       additions: number;
       deletions: number;
       changed_files: number;
+      comments: number;
+      labels: Array<{ name: string }>;
+      created_at: string;
+      updated_at: string;
     }
     return this.apiGet<PRResponse>(`/repos/${repo}/pulls/${number}`);
+  }
+
+  private async fetchAndUpsertIssues(repo: string): Promise<void> {
+    interface IssueResponse {
+      number: number;
+      title: string;
+      body: string | null;
+      state: string;
+      user: { login: string };
+      html_url: string;
+      comments: number;
+      labels: Array<{ name: string }>;
+      created_at: string;
+      updated_at: string;
+      closed_at: string | null;
+      pull_request?: object;
+    }
+
+    let page = 1;
+    while (true) {
+      const items = await this.apiGet<IssueResponse[]>(
+        `/repos/${repo}/issues?state=all&per_page=100&page=${page}`
+      );
+      if (!items || items.length === 0) break;
+
+      for (const item of items) {
+        if (item.pull_request) continue;
+
+        const labelNames = item.labels.length > 0
+          ? JSON.stringify(item.labels.map((l) => l.name))
+          : null;
+
+        upsertIssue(this.db, {
+          repo,
+          number: item.number,
+          title: item.title,
+          body: item.body,
+          state: item.state,
+          author: item.user.login,
+          url: item.html_url,
+          comment_count: item.comments,
+          label_names: labelNames,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          closed_at: item.closed_at,
+        });
+      }
+
+      if (items.length < 100) break;
+      page++;
+    }
+  }
+
+  async backfillPrsAndIssues(repos: string[]): Promise<void> {
+    interface PullsResponse {
+      number: number;
+      title: string;
+      body: string | null;
+      state: string;
+      merged_at: string | null;
+      closed_at: string | null;
+      user: { login: string };
+      html_url: string;
+      comments: number;
+      labels: Array<{ name: string }>;
+      created_at: string;
+      updated_at: string;
+    }
+
+    for (const repo of repos) {
+      console.log(`[github-poller] Backfilling PRs for ${repo}`);
+      let page = 1;
+      while (true) {
+        const prs = await this.apiGet<PullsResponse[]>(
+          `/repos/${repo}/pulls?state=all&per_page=100&page=${page}`
+        );
+        if (!prs || prs.length === 0) break;
+
+        for (const pr of prs) {
+          const labelNames = pr.labels.length > 0
+            ? JSON.stringify(pr.labels.map((l) => l.name))
+            : null;
+          const state = pr.merged_at !== null && pr.state === "closed" ? "merged" : pr.state;
+          upsertPr(this.db, {
+            repo,
+            number: pr.number,
+            title: pr.title,
+            body: pr.body,
+            state,
+            author: pr.user.login,
+            url: pr.html_url,
+            additions: null,
+            deletions: null,
+            changed_files: null,
+            comment_count: pr.comments,
+            label_names: labelNames,
+            created_at: pr.created_at,
+            updated_at: pr.updated_at,
+            merged_at: pr.merged_at,
+            closed_at: pr.closed_at,
+          });
+        }
+
+        if (prs.length < 100) break;
+        page++;
+      }
+
+      console.log(`[github-poller] Backfilling issues for ${repo}`);
+      try {
+        await this.fetchAndUpsertIssues(repo);
+      } catch (err) {
+        console.warn(`[github-poller] Issue backfill failed for ${repo}:`, err);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -343,6 +490,29 @@ export class GithubPoller {
               deletions: prData.deletions,
               changed_files: prData.changed_files,
             });
+            const labels = prData.labels ?? [];
+            const labelNames = labels.length > 0
+              ? JSON.stringify(labels.map((l) => l.name))
+              : null;
+            const state = prData.merged && prData.state === "closed" ? "merged" : prData.state;
+            upsertPr(this.db, {
+              repo: raw.repo.name,
+              number: prNumber,
+              title: prData.title,
+              body: prData.body,
+              state,
+              author: prData.user?.login ?? "unknown",
+              url: prData.html_url,
+              additions: prData.additions,
+              deletions: prData.deletions,
+              changed_files: prData.changed_files,
+              comment_count: prData.comments ?? 0,
+              label_names: labelNames,
+              created_at: prData.created_at,
+              updated_at: prData.updated_at,
+              merged_at: prData.merged_at ?? null,
+              closed_at: prData.closed_at ?? null,
+            });
           }
         }
       }
@@ -409,6 +579,12 @@ export class GithubPoller {
 
       console.log(`[github-poller] Page ${page}: ${events.length} events`);
       await this.ingestEvents(events);
+    }
+
+    // After events are ingested, repos are known — backfill PRs and issues
+    const repos = getRepos(this.db);
+    if (repos.length > 0) {
+      await this.backfillPrsAndIssues(repos.map((r) => r.full_name));
     }
   }
 
