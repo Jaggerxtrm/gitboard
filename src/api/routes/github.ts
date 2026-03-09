@@ -12,6 +12,10 @@ import {
   getSummary,
   getRepoStats,
   enrichCommitMessages,
+  getPrs,
+  getPr,
+  getIssues,
+  getIssue,
 } from "../../core/github-store.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
 
@@ -172,6 +176,42 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
       : "today";
     const summary = getSummary(db, period);
     return c.json(summary);
+  });
+
+  // GET /api/github/prs
+  app.get("/prs", (c) => {
+    const q = c.req.query();
+    const limit = q.limit ? parseInt(q.limit, 10) : 100;
+    const offset = q.offset ? parseInt(q.offset, 10) : 0;
+    const prs = getPrs(db, { repo: q.repo, state: q.state, limit, offset });
+    return c.json({ data: prs, limit, offset });
+  });
+
+  // GET /api/github/prs/:owner/:repo/:number
+  app.get("/prs/:owner/:repo/:number", (c) => {
+    const repo = `${c.req.param("owner")}/${c.req.param("repo")}`;
+    const number = parseInt(c.req.param("number"), 10);
+    const pr = getPr(db, repo, number);
+    if (!pr) return c.json({ error: "not found" }, 404);
+    return c.json(pr);
+  });
+
+  // GET /api/github/issues
+  app.get("/issues", (c) => {
+    const q = c.req.query();
+    const limit = q.limit ? parseInt(q.limit, 10) : 100;
+    const offset = q.offset ? parseInt(q.offset, 10) : 0;
+    const issues = getIssues(db, { repo: q.repo, state: q.state, limit, offset });
+    return c.json({ data: issues, limit, offset });
+  });
+
+  // GET /api/github/issues/:owner/:repo/:number
+  app.get("/issues/:owner/:repo/:number", (c) => {
+    const repo = `${c.req.param("owner")}/${c.req.param("repo")}`;
+    const number = parseInt(c.req.param("number"), 10);
+    const issue = getIssue(db, repo, number);
+    if (!issue) return c.json({ error: "not found" }, 404);
+    return c.json(issue);
   });
 
   return app;

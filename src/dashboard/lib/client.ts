@@ -86,6 +86,34 @@ export class ApiClient {
     return this.get(`/api/github/summary?period=${period}`);
   }
 
+  getPrs(params: { repo?: string; state?: string; limit?: number; offset?: number } = {}): Promise<{ data: unknown[]; limit: number; offset: number }> {
+    const q = new URLSearchParams();
+    if (params.repo) q.set("repo", params.repo);
+    if (params.state) q.set("state", params.state);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
+    const qs = q.toString();
+    return this.get(`/api/github/prs${qs ? `?${qs}` : ""}`);
+  }
+
+  getPr(owner: string, repo: string, number: number): Promise<unknown> {
+    return this.get(`/api/github/prs/${owner}/${repo}/${number}`);
+  }
+
+  getIssues(params: { repo?: string; state?: string; limit?: number; offset?: number } = {}): Promise<{ data: unknown[]; limit: number; offset: number }> {
+    const q = new URLSearchParams();
+    if (params.repo) q.set("repo", params.repo);
+    if (params.state) q.set("state", params.state);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
+    const qs = q.toString();
+    return this.get(`/api/github/issues${qs ? `?${qs}` : ""}`);
+  }
+
+  getIssue(owner: string, repo: string, number: number): Promise<unknown> {
+    return this.get(`/api/github/issues/${owner}/${repo}/${number}`);
+  }
+
   getRepoStats(): Promise<RepoStatsResponse> {
     return this.get("/api/github/repos/stats");
   }
