@@ -5,14 +5,68 @@ import { useGithubActivity } from "../../hooks/useGithubActivity.ts";
 import { StatsHeader } from "./StatsHeader.tsx";
 import { RepoSidebar } from "./RepoSidebar.tsx";
 import { ActivityTimeline } from "./ActivityTimeline.tsx";
+import { PrTimeline } from "./PrTimeline.tsx";
+import { IssueTimeline } from "./IssueTimeline.tsx";
 import type { GithubEvent } from "../../../types/github.ts";
 
 const SOCIAL_TYPES = new Set(["WatchEvent", "ForkEvent", "MemberEvent"]);
+
+type Tab = "activity" | "prs" | "issues";
+
+function TabBar({
+  activeTab,
+  onSelect,
+  prCount,
+  issueCount,
+}: {
+  activeTab: Tab;
+  onSelect: (tab: Tab) => void;
+  prCount: number;
+  issueCount: number;
+}) {
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "activity", label: "Activity" },
+    { id: "prs", label: `Pull Requests${prCount > 0 ? ` (${prCount})` : ""}` },
+    { id: "issues", label: `Issues${issueCount > 0 ? ` (${issueCount})` : ""}` },
+  ];
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        borderBottom: "1px solid var(--border-subtle)",
+        flexShrink: 0,
+        background: "var(--surface-primary)",
+      }}
+    >
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => onSelect(tab.id)}
+          style={{
+            padding: "8px 16px",
+            background: "transparent",
+            border: "none",
+            borderBottom: activeTab === tab.id ? "2px solid var(--accent-blue)" : "2px solid transparent",
+            color: activeTab === tab.id ? "var(--text-primary)" : "var(--text-muted)",
+            fontSize: "var(--text-xs)",
+            fontWeight: activeTab === tab.id ? 600 : 400,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => void } = {}) {
   onMount();
 
   const [socialOpen, setSocialOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("activity");
 
   const {
     events,
@@ -24,6 +78,8 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     loading,
     error,
     unreadRepos,
+    prs,
+    issues,
     selectEvent,
     setFilter,
     resetFilter,
@@ -65,7 +121,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* Left: Repo Sidebar — clean repo list only */}
+      {/* Left: Repo Sidebar */}
       <RepoSidebar
         repos={repos}
         stats={repoStats}
@@ -77,21 +133,31 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         onReset={resetFilter}
       />
 
-      {/* Center: Activity Timeline (full remaining width) */}
+      {/* Center: Tabbed timeline */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <StatsHeader summary={summary} />
 
-        {/* Main feed: owned activity only */}
+        <TabBar
+          activeTab={activeTab}
+          onSelect={setActiveTab}
+          prCount={prs.length}
+          issueCount={issues.length}
+        />
+
         <div style={{ flex: 1, minHeight: 0 }}>
-          <ActivityTimeline
-            events={ownEvents}
-            selectedId={selectedEvent?.id ?? null}
-            onSelect={(evt) => void handleSelectEvent(evt)}
-          />
+          {activeTab === "activity" && (
+            <ActivityTimeline
+              events={ownEvents}
+              selectedId={selectedEvent?.id ?? null}
+              onSelect={(evt) => void handleSelectEvent(evt)}
+            />
+          )}
+          {activeTab === "prs" && <PrTimeline prs={prs} />}
+          {activeTab === "issues" && <IssueTimeline issues={issues} />}
         </div>
 
-        {/* Starred / Social strip — collapsed by default */}
-        {socialEvents.length > 0 && (
+        {/* Starred / Social strip — only shown on Activity tab */}
+        {activeTab === "activity" && socialEvents.length > 0 && (
           <div style={{
             flexShrink: 0,
             borderTop: "1px solid var(--border-subtle)",
@@ -135,4 +201,3 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     </div>
   );
 }
-
