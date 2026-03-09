@@ -418,3 +418,179 @@ export function getSummary(db: Database, period: "today" | "week" | "month"): Su
 
   return { events, commits, repos, pushes, prs };
 }
+
+// ─── GitHub PRs ────────────────────────────────────────────────────────────
+
+export interface GithubPr {
+  repo: string;
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;           // 'open' | 'closed' | 'merged'
+  author: string;
+  url: string | null;
+  additions: number | null;
+  deletions: number | null;
+  changed_files: number | null;
+  comment_count: number;
+  label_names: string | null;  // raw JSON array string e.g. '["bug","help wanted"]'
+  created_at: string;
+  updated_at: string | null;
+  merged_at: string | null;
+  closed_at: string | null;
+}
+
+export interface PrFilters {
+  repo?: string;
+  state?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function upsertPr(db: Database, pr: GithubPr): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO github_prs
+      (repo, number, title, body, state, author, url,
+       additions, deletions, changed_files, comment_count, label_names,
+       created_at, updated_at, merged_at, closed_at)
+     VALUES
+      ($repo, $number, $title, $body, $state, $author, $url,
+       $additions, $deletions, $changed_files, $comment_count, $label_names,
+       $created_at, $updated_at, $merged_at, $closed_at)`
+  ).run({
+    $repo: pr.repo,
+    $number: pr.number,
+    $title: pr.title,
+    $body: pr.body,
+    $state: pr.state,
+    $author: pr.author,
+    $url: pr.url,
+    $additions: pr.additions,
+    $deletions: pr.deletions,
+    $changed_files: pr.changed_files,
+    $comment_count: pr.comment_count,
+    $label_names: pr.label_names,
+    $created_at: pr.created_at,
+    $updated_at: pr.updated_at,
+    $merged_at: pr.merged_at,
+    $closed_at: pr.closed_at,
+  } as AnyParams);
+}
+
+export function getPrs(db: Database, filters: PrFilters = {}): GithubPr[] {
+  const conditions: string[] = [];
+  const params: Record<string, string | number | null | undefined> = {};
+
+  if (filters.repo) {
+    conditions.push("repo = $repo");
+    params.$repo = filters.repo;
+  }
+
+  if (filters.state) {
+    conditions.push("state = $state");
+    params.$state = filters.state;
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.$limit = filters.limit ?? 100;
+  params.$offset = filters.offset ?? 0;
+
+  return db
+    .query<GithubPr, AnyParams>(
+      `SELECT * FROM github_prs ${where} ORDER BY updated_at DESC LIMIT $limit OFFSET $offset`
+    )
+    .all(params);
+}
+
+export function getPr(db: Database, repo: string, number: number): GithubPr | null {
+  return (
+    db
+      .query<GithubPr, AnyParams>(
+        "SELECT * FROM github_prs WHERE repo = $repo AND number = $number"
+      )
+      .get({ $repo: repo, $number: number }) ?? null
+  );
+}
+
+// ─── GitHub Issues ──────────────────────────────────────────────────────────
+
+export interface GithubIssue {
+  repo: string;
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;           // 'open' | 'closed'
+  author: string;
+  url: string | null;
+  comment_count: number;
+  label_names: string | null;  // raw JSON array string
+  created_at: string;
+  updated_at: string | null;
+  closed_at: string | null;
+}
+
+export interface IssueFilters {
+  repo?: string;
+  state?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function upsertIssue(db: Database, issue: GithubIssue): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO github_issues
+      (repo, number, title, body, state, author, url,
+       comment_count, label_names, created_at, updated_at, closed_at)
+     VALUES
+      ($repo, $number, $title, $body, $state, $author, $url,
+       $comment_count, $label_names, $created_at, $updated_at, $closed_at)`
+  ).run({
+    $repo: issue.repo,
+    $number: issue.number,
+    $title: issue.title,
+    $body: issue.body,
+    $state: issue.state,
+    $author: issue.author,
+    $url: issue.url,
+    $comment_count: issue.comment_count,
+    $label_names: issue.label_names,
+    $created_at: issue.created_at,
+    $updated_at: issue.updated_at,
+    $closed_at: issue.closed_at,
+  } as AnyParams);
+}
+
+export function getIssues(db: Database, filters: IssueFilters = {}): GithubIssue[] {
+  const conditions: string[] = [];
+  const params: Record<string, string | number | null | undefined> = {};
+
+  if (filters.repo) {
+    conditions.push("repo = $repo");
+    params.$repo = filters.repo;
+  }
+
+  if (filters.state) {
+    conditions.push("state = $state");
+    params.$state = filters.state;
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.$limit = filters.limit ?? 100;
+  params.$offset = filters.offset ?? 0;
+
+  return db
+    .query<GithubIssue, AnyParams>(
+      `SELECT * FROM github_issues ${where} ORDER BY updated_at DESC LIMIT $limit OFFSET $offset`
+    )
+    .all(params);
+}
+
+export function getIssue(db: Database, repo: string, number: number): GithubIssue | null {
+  return (
+    db
+      .query<GithubIssue, AnyParams>(
+        "SELECT * FROM github_issues WHERE repo = $repo AND number = $number"
+      )
+      .get({ $repo: repo, $number: number }) ?? null
+  );
+}
