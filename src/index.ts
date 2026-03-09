@@ -1,9 +1,12 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { createDatabase } from "./core/store.ts";
 import { GithubPoller, getGithubToken, getAuthenticatedUsername } from "./core/github-poller.ts";
 import { discoverAndInsert } from "./core/github-discover.ts";
 import { startServer } from "./api/server.ts";
 
 const DB_PATH = process.env.AGENT_FORGE_DB ?? `${process.env.HOME}/.agent-forge/state.db`;
+mkdirSync(dirname(DB_PATH), { recursive: true });
 const PORT = Number(process.env.PORT ?? 3000);
 
 const db = createDatabase(DB_PATH);
