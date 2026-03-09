@@ -7,6 +7,8 @@ import type {
   Summary,
   EventFilter,
   RepoStat,
+  GithubPr,
+  GithubIssue,
 } from "../../types/github.ts";
 
 export interface GithubState {
@@ -21,10 +23,12 @@ export interface GithubState {
   error: string | null;
   repoStats: Record<string, RepoStat>;
   unreadRepos: Set<string>;
+  prs: GithubPr[];
+  issues: GithubIssue[];
 
   setEvents: (events: GithubEvent[]) => void;
   appendEvents: (events: GithubEvent[]) => void;
-  prependEvent: (event: GithubEvent) => void;
+  prependEvent: (event: GithubEvent | null) => void;
   selectEvent: (event: GithubEvent | null) => void;
   setSelectedEventCommits: (commits: GithubCommit[]) => void;
   setRepos: (repos: GithubRepo[]) => void;
@@ -38,6 +42,8 @@ export interface GithubState {
   setRepoStats: (stats: RepoStat[]) => void;
   markRepoUnread: (fullName: string) => void;
   clearRepoUnread: (fullName: string) => void;
+  setPrs: (prs: GithubPr[]) => void;
+  setIssues: (issues: GithubIssue[]) => void;
 }
 
 const defaultFilter: EventFilter = {};
@@ -54,6 +60,8 @@ export const useGithubStore = create<GithubState>((set) => ({
   error: null,
   repoStats: {},
   unreadRepos: new Set(),
+  prs: [],
+  issues: [],
 
   setEvents: (events) => set({ events }),
 
@@ -66,7 +74,7 @@ export const useGithubStore = create<GithubState>((set) => ({
 
   prependEvent: (event) =>
     set((s) => {
-      if (s.events.some((e) => e.id === event.id)) return s;
+      if (!event || s.events.some((e) => e.id === event.id)) return s;
       return { events: [event, ...s.events] };
     }),
 
@@ -109,4 +117,8 @@ export const useGithubStore = create<GithubState>((set) => ({
     next.delete(fullName);
     return { unreadRepos: next };
   }),
+
+  setPrs: (prs) => set({ prs }),
+
+  setIssues: (issues) => set({ issues }),
 }));

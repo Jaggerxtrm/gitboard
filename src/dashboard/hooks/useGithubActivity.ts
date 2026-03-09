@@ -18,30 +18,36 @@ export function useGithubActivity(): void {
     markRepoUnread,
     setLoading,
     setError,
+    setPrs,
+    setIssues,
   } = useGithubStore();
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [eventsRes, reposRes, contribRes, summaryRes, statsRes] = await Promise.all([
+      const [eventsRes, reposRes, contribRes, summaryRes, statsRes, prsRes, issuesRes] = await Promise.all([
         apiClient.getEvents({ ...filter, limit: 50, offset: 0 }),
         apiClient.getRepos(),
         apiClient.getContributions(),
         apiClient.getSummary("today"),
         apiClient.getRepoStats(),
+        apiClient.getPrs({ limit: 100 }),
+        apiClient.getIssues({ limit: 100 }),
       ]);
       setEvents(eventsRes.data);
       setRepos(reposRes.data);
       setContributions(contribRes.data);
       setSummary(summaryRes);
       setRepoStats(statsRes.data);
+      setPrs(prsRes.data);
+      setIssues(issuesRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError]);
+  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues]);
 
   useEffect(() => {
     void load();

@@ -7,6 +7,8 @@ import type {
   GithubRepo,
   EventFilter,
   RepoStatsResponse,
+  PrsResponse,
+  IssuesResponse,
 } from "../../types/github.ts";
 
 export class ApiClient {
@@ -86,7 +88,7 @@ export class ApiClient {
     return this.get(`/api/github/summary?period=${period}`);
   }
 
-  getPrs(params: { repo?: string; state?: string; limit?: number; offset?: number } = {}): Promise<{ data: unknown[]; limit: number; offset: number }> {
+  getPrs(params: { repo?: string; state?: string; limit?: number; offset?: number } = {}): Promise<PrsResponse> {
     const q = new URLSearchParams();
     if (params.repo) q.set("repo", params.repo);
     if (params.state) q.set("state", params.state);
@@ -100,7 +102,7 @@ export class ApiClient {
     return this.get(`/api/github/prs/${owner}/${repo}/${number}`);
   }
 
-  getIssues(params: { repo?: string; state?: string; limit?: number; offset?: number } = {}): Promise<{ data: unknown[]; limit: number; offset: number }> {
+  getIssues(params: { repo?: string; state?: string; limit?: number; offset?: number } = {}): Promise<IssuesResponse> {
     const q = new URLSearchParams();
     if (params.repo) q.set("repo", params.repo);
     if (params.state) q.set("state", params.state);

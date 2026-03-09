@@ -95,3 +95,49 @@ export type EventFilter = {
   limit?: number;
   offset?: number;
 };
+
+export interface GithubPr {
+  repo: string;
+  number: number;
+  title: string;
+  body: string | null;
+  state: string; // 'open' | 'closed' | 'merged'
+  author: string;
+  url: string | null;
+  additions: number | null;
+  deletions: number | null;
+  changed_files: number | null;
+  comment_count: number;
+  label_names: string | null; // raw JSON array string e.g. '["bug","help wanted"]'
+  created_at: string;
+  updated_at: string | null;
+  merged_at: string | null;
+  closed_at: string | null;
+}
+
+export interface GithubIssue {
+  repo: string;
+  number: number;
+  title: string;
+  body: string | null;
+  state: string; // 'open' | 'closed'
+  author: string;
+  url: string | null;
+  comment_count: number;
+  label_names: string | null; // raw JSON array string
+  created_at: string;
+  updated_at: string | null;
+  closed_at: string | null;
+}
+
+export interface PrsResponse {
+  data: GithubPr[];
+  limit: number;
+  offset: number;
+}
+
+export interface IssuesResponse {
+  data: GithubIssue[];
+  limit: number;
+  offset: number;
+}

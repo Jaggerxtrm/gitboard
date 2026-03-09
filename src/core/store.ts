@@ -7,6 +7,8 @@ export const TABLES = [
   "github_events",
   "github_commits",
   "github_repos",
+  "github_prs",
+  "github_issues",
 ] as const;
 
 export type TableName = (typeof TABLES)[number];
@@ -128,16 +130,62 @@ CREATE TABLE IF NOT EXISTS github_repos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_gh_repos_group ON github_repos(group_name);
+
+CREATE TABLE IF NOT EXISTS github_prs (
+  repo            TEXT NOT NULL,
+  number          INTEGER NOT NULL,
+  title           TEXT NOT NULL,
+  body            TEXT,
+  state           TEXT NOT NULL,
+  author          TEXT NOT NULL,
+  url             TEXT,
+  additions       INTEGER,
+  deletions       INTEGER,
+  changed_files   INTEGER,
+  comment_count   INTEGER DEFAULT 0,
+  label_names     TEXT,
+  created_at      DATETIME NOT NULL,
+  updated_at      DATETIME,
+  merged_at       DATETIME,
+  closed_at       DATETIME,
+  PRIMARY KEY (repo, number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_prs_repo  ON github_prs(repo, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gh_prs_state ON github_prs(state, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS github_issues (
+  repo            TEXT NOT NULL,
+  number          INTEGER NOT NULL,
+  title           TEXT NOT NULL,
+  body            TEXT,
+  state           TEXT NOT NULL,
+  author          TEXT NOT NULL,
+  url             TEXT,
+  comment_count   INTEGER DEFAULT 0,
+  label_names     TEXT,
+  created_at      DATETIME NOT NULL,
+  updated_at      DATETIME,
+  closed_at       DATETIME,
+  PRIMARY KEY (repo, number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_issues_repo  ON github_issues(repo, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gh_issues_state ON github_issues(state, updated_at DESC);
 `;
 
 export function createDatabase(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec(SCHEMA);
-  // Idempotent migration — message_full lazy enrichment column
-  try {
-    db.exec("ALTER TABLE github_commits ADD COLUMN message_full TEXT");
-  } catch {
-    // Column already exists — safe to ignore
+  // Idempotent migrations for existing databases
+  const migrations = [
+    "ALTER TABLE github_commits ADD COLUMN message_full TEXT",
+    "ALTER TABLE github_prs ADD COLUMN additions INTEGER",
+    "ALTER TABLE github_prs ADD COLUMN deletions INTEGER",
+    "ALTER TABLE github_prs ADD COLUMN changed_files INTEGER",
+  ];
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch { /* column already exists */ }
   }
   return db;
 }
