@@ -20,6 +20,7 @@ export function useGithubActivity(): void {
     setError,
     setPrs,
     setIssues,
+    mergeRepoLastActivity,
   } = useGithubStore();
 
   const load = useCallback(async () => {
@@ -36,6 +37,7 @@ export function useGithubActivity(): void {
         apiClient.getIssues({ limit: 100 }),
       ]);
       setEvents(eventsRes.data);
+      mergeRepoLastActivity(eventsRes.data);
       setRepos(reposRes.data);
       setContributions(contribRes.data);
       setSummary(summaryRes);
@@ -47,7 +49,7 @@ export function useGithubActivity(): void {
     } finally {
       setLoading(false);
     }
-  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues]);
+  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues, mergeRepoLastActivity]);
 
   useEffect(() => {
     void load();
@@ -59,16 +61,18 @@ export function useGithubActivity(): void {
         const event = msg.data as GithubEvent;
         prependEvent(event);
         markRepoUnread(event.repo);
+        mergeRepoLastActivity([event]);
       }
       if (msg.event === "new_commits" && msg.data) {
         const { event } = msg.data as { event: GithubEvent };
         if (event) {
           prependEvent(event);
           markRepoUnread(event.repo);
+          mergeRepoLastActivity([event]);
         }
       }
     },
-    [prependEvent, markRepoUnread]
+    [prependEvent, markRepoUnread, mergeRepoLastActivity]
   );
 
   useWebSocket("github:activity", wsHandler);
@@ -82,10 +86,11 @@ export function useGithubActivity(): void {
         offset: currentCount,
       });
       appendEvents(res.data);
+      mergeRepoLastActivity(res.data);
     } catch {
       // ignore load-more errors
     }
-  }, [filter, appendEvents]);
+  }, [filter, appendEvents, mergeRepoLastActivity]);
 
   // Expose loadMore via store would be cleaner, but for now attach to window for dev
   useEffect(() => {
