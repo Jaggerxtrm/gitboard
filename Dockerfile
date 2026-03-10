@@ -13,8 +13,9 @@ RUN bun run build:dashboard
 FROM oven/bun:1.2-alpine AS production
 WORKDIR /app
 
-# Non-root user
-RUN addgroup -g 1001 -S forge && adduser -S forge -u 1001 -G forge
+# Non-root user + data directory
+RUN addgroup -g 1001 -S forge && adduser -S forge -u 1001 -G forge \
+ && mkdir -p /home/forge/.agent-forge && chown forge:forge /home/forge/.agent-forge
 
 COPY --from=deps   --chown=forge:forge /app/node_modules ./node_modules
 COPY --from=build  --chown=forge:forge /app/dist         ./dist
