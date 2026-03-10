@@ -27,12 +27,12 @@ export function filterOwnRepos(repos: GithubRepo[], lastEventAt: Record<string, 
 
 export function sortByLastEvent(repos: GithubRepo[], lastEventAt: Record<string, string>): GithubRepo[] {
   return [...repos].sort((a, b) => {
-    const ta = lastEventAt[a.full_name] ?? a.last_polled_at ?? "";
-    const tb = lastEventAt[b.full_name] ?? b.last_polled_at ?? "";
-    if (!ta && !tb) return 0;
+    const ta = lastEventAt[a.full_name] ?? "";
+    const tb = lastEventAt[b.full_name] ?? "";
+    if (!ta && !tb) return a.full_name.localeCompare(b.full_name);
     if (!ta) return 1;
     if (!tb) return -1;
-    return tb > ta ? 1 : -1;
+    return tb > ta ? 1 : tb < ta ? -1 : a.full_name.localeCompare(b.full_name);
   });
 }
 

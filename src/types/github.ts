@@ -58,6 +58,7 @@ export interface RepoStat {
   pushes: number;
   prs_open: number;
   prs_closed: number;
+  last_event_at: string | null;
 }
 
 export interface RepoStatsResponse {

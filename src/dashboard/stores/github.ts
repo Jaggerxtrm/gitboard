@@ -25,7 +25,6 @@ export interface GithubState {
   unreadRepos: Set<string>;
   prs: GithubPr[];
   issues: GithubIssue[];
-  repoLastActivity: Record<string, string>;
 
   setEvents: (events: GithubEvent[]) => void;
   appendEvents: (events: GithubEvent[]) => void;
@@ -45,7 +44,6 @@ export interface GithubState {
   clearRepoUnread: (fullName: string) => void;
   setPrs: (prs: GithubPr[]) => void;
   setIssues: (issues: GithubIssue[]) => void;
-  mergeRepoLastActivity: (events: GithubEvent[]) => void;
 }
 
 const defaultFilter: EventFilter = {};
@@ -64,7 +62,6 @@ export const useGithubStore = create<GithubState>((set) => ({
   unreadRepos: new Set(),
   prs: [],
   issues: [],
-  repoLastActivity: {},
 
   setEvents: (events) => set({ events }),
 
@@ -124,15 +121,4 @@ export const useGithubStore = create<GithubState>((set) => ({
   setPrs: (prs) => set({ prs }),
 
   setIssues: (issues) => set({ issues }),
-
-  mergeRepoLastActivity: (events) =>
-    set((s) => {
-      const next = { ...s.repoLastActivity };
-      for (const e of events) {
-        if (!next[e.repo] || e.created_at > next[e.repo]) {
-          next[e.repo] = e.created_at;
-        }
-      }
-      return { repoLastActivity: next };
-    }),
 }));

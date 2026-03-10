@@ -80,7 +80,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     unreadRepos,
     prs,
     issues,
-    repoLastActivity,
     selectEvent,
     setFilter,
     resetFilter,
@@ -92,6 +91,12 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   // Derive owner username from events actor
   const ownerUsername = ownEvents[0]?.actor ?? null;
+
+  // Build lastEventAt from repoStats — filter-independent, covers all repos in DB
+  const lastEventAt: Record<string, string> = {};
+  for (const [repo, stat] of Object.entries(repoStats)) {
+    if (stat.last_event_at) lastEventAt[repo] = stat.last_event_at;
+  }
 
   // Filter PRs and issues to only the owner's repos
   const ownPrs = ownerUsername ? prs.filter((pr) => pr.repo.startsWith(ownerUsername + "/")) : prs;
@@ -126,7 +131,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         stats={repoStats}
         selectedRepos={filter.repos ?? []}
         unreadRepos={unreadRepos}
-        lastEventAt={repoLastActivity}
+        lastEventAt={lastEventAt}
         ownerUsername={ownerUsername}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
