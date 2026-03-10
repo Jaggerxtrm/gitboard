@@ -4,7 +4,7 @@
 COMPOSE      := docker compose
 SERVICE      := gitboard
 TOKEN        := $(shell gh auth token 2>/dev/null)
-DOCKER_HOST  ?= unix:///run/user/$(shell id -u)/podman/podman.sock
+DOCKER_HOST  ?= unix:///var/run/docker.sock
 
 export DOCKER_HOST
 
