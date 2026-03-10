@@ -80,6 +80,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     unreadRepos,
     prs,
     issues,
+    repoLastActivity,
     selectEvent,
     setFilter,
     resetFilter,
@@ -89,14 +90,12 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
   const ownEvents = events.filter((e) => !SOCIAL_TYPES.has(e.type));
   const socialEvents = events.filter((e) => SOCIAL_TYPES.has(e.type));
 
-  // Derive owner username + last own-activity timestamp per repo for sidebar
+  // Derive owner username from events actor
   const ownerUsername = ownEvents[0]?.actor ?? null;
-  const lastEventAt: Record<string, string> = {};
-  for (const evt of ownEvents) {
-    if (!lastEventAt[evt.repo] || evt.created_at > lastEventAt[evt.repo]) {
-      lastEventAt[evt.repo] = evt.created_at;
-    }
-  }
+
+  // Filter PRs and issues to only the owner's repos
+  const ownPrs = ownerUsername ? prs.filter((pr) => pr.repo.startsWith(ownerUsername + "/")) : prs;
+  const ownIssues = ownerUsername ? issues.filter((issue) => issue.repo.startsWith(ownerUsername + "/")) : issues;
 
   function handleSelectEvent(evt: GithubEvent) {
     selectEvent(evt);
@@ -127,7 +126,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         stats={repoStats}
         selectedRepos={filter.repos ?? []}
         unreadRepos={unreadRepos}
-        lastEventAt={lastEventAt}
+        lastEventAt={repoLastActivity}
         ownerUsername={ownerUsername}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
@@ -140,8 +139,8 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         <TabBar
           activeTab={activeTab}
           onSelect={setActiveTab}
-          prCount={prs.length}
-          issueCount={issues.length}
+          prCount={ownPrs.length}
+          issueCount={ownIssues.length}
         />
 
         <div style={{ flex: 1, minHeight: 0 }}>
@@ -152,8 +151,8 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
               onSelect={(evt) => void handleSelectEvent(evt)}
             />
           )}
-          {activeTab === "prs" && <PrTimeline prs={prs} />}
-          {activeTab === "issues" && <IssueTimeline issues={issues} />}
+          {activeTab === "prs" && <PrTimeline prs={ownPrs} />}
+          {activeTab === "issues" && <IssueTimeline issues={ownIssues} />}
         </div>
 
         {/* Starred / Social strip — only shown on Activity tab */}
