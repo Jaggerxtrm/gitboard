@@ -277,3 +277,10 @@ Before completing any code modification task, verify:
 - Generate docs: `npx gitnexus wiki`
 
 <!-- gitnexus:end -->
+
+## Specialists
+
+Call `specialist_init` at the start of every session to bootstrap context and
+see available specialists. Use `use_specialist` or `start_specialist` to
+delegate heavy tasks (code review, bug hunting, deep reasoning) to the right
+specialist without user intervention.
