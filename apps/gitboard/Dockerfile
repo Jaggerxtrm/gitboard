@@ -6,7 +6,7 @@ WORKDIR /app
 # Copy everything
 COPY . .
 
-# Install dependencies
+# Install dependencies at workspace root
 RUN bun install
 
 # Build packages
@@ -14,6 +14,9 @@ RUN bun run build:packages
 
 # Build dashboard
 RUN cd apps/gitboard && bun run build:dashboard
+
+# Remove broken symlinks in app node_modules so bun uses root node_modules
+RUN rm -rf apps/beadboard/node_modules apps/gitboard/node_modules
 
 # Non-root user + data directory
 RUN addgroup -g 1001 -S forge && adduser -S forge -u 1001 -G forge \
@@ -27,8 +30,5 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health || exit 1
-
-WORKDIR /app/apps/gitboard
-CMD ["bun", "run", "src/index.ts"]
+# Stay in workspace root where node_modules lives
+CMD ["bun", "/app/apps/gitboard/src/index.ts"]

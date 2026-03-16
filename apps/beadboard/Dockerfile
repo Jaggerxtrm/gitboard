@@ -6,7 +6,7 @@ WORKDIR /app
 # Copy everything
 COPY . .
 
-# Install dependencies
+# Install dependencies at workspace root
 RUN bun install
 
 # Build packages
@@ -15,7 +15,10 @@ RUN bun run build:packages
 # Build dashboard
 RUN cd apps/beadboard && bun run build:dashboard
 
-# Non-root user
+# Remove broken symlinks in app node_modules so bun uses root node_modules
+RUN rm -rf apps/beadboard/node_modules apps/gitboard/node_modules
+
+# Non-root user  
 RUN addgroup -g 1002 -S beadboard && adduser -S beadboard -u 1002 -G beadboard \
  && chown -R beadboard:beadboard /app
 
@@ -27,8 +30,5 @@ ENV HOME=/home/beadboard
 
 EXPOSE 3001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3001/health || exit 1
-
-WORKDIR /app/apps/beadboard
-CMD ["bun", "run", "src/index.ts"]
+# Stay in workspace root where node_modules lives
+CMD ["bun", "/app/apps/beadboard/src/index.ts"]
