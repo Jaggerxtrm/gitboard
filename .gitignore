@@ -22,3 +22,6 @@ e4494c9598b9
 # Claude Code local config
 .claude/
 .specialists/
+
+# bv (beads viewer) local config and caches
+.bv/
