@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
 import react from "@vitejs/plugin-react";
+import { VitestReporter } from "tdd-guard-vitest";
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -12,6 +13,10 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    reporters: [
+      "default",
+      new VitestReporter("/home/dawid/projects/gitboard"),
+    ],
     coverage: {
       provider: "v8",
     },

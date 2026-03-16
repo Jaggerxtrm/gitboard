@@ -135,7 +135,7 @@ Multi-repo architecture (future): `docs/omniforge-architecture.md`.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **unit.ai.board** (311 symbols, 667 relationships, 22 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **gitboard** (350 symbols, 759 relationships, 23 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -151,7 +151,7 @@ This project is indexed by GitNexus as **unit.ai.board** (311 symbols, 667 relat
 
 1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
 2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/unit.ai.board/process/{processName}` — trace the full execution flow step by step
+3. `READ gitnexus://repo/gitboard/process/{processName}` — trace the full execution flow step by step
 4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
 
 ## When Refactoring
@@ -190,10 +190,10 @@ This project is indexed by GitNexus as **unit.ai.board** (311 symbols, 667 relat
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/unit.ai.board/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/unit.ai.board/clusters` | All functional areas |
-| `gitnexus://repo/unit.ai.board/processes` | All execution flows |
-| `gitnexus://repo/unit.ai.board/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/gitboard/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/gitboard/clusters` | All functional areas |
+| `gitnexus://repo/gitboard/processes` | All execution flows |
+| `gitnexus://repo/gitboard/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 
