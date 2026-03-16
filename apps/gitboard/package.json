@@ -30,9 +30,6 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@omniforge/core": "workspace:*",
-    "@omniforge/ui": "workspace:*",
-    "@omniforge/api-client": "workspace:*",
     "@primer/octicons-react": "^19.22.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-collapsible": "^1.1.12",
