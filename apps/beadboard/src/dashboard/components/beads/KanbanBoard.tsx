@@ -8,6 +8,7 @@ import { StatusColumn } from "./StatusColumn.tsx";
 interface KanbanBoardProps {
   issues: BeadIssue[];
   onIssueClick?: (issue: BeadIssue) => void;
+  getAgent?: (issueId: string) => string | null;
 }
 
 const COLUMNS: Array<{ status: BeadIssue["status"]; title: string }> = [
@@ -17,7 +18,7 @@ const COLUMNS: Array<{ status: BeadIssue["status"]; title: string }> = [
   { status: "closed", title: "Closed" },
 ];
 
-export function KanbanBoard({ issues, onIssueClick }: KanbanBoardProps) {
+export function KanbanBoard({ issues, onIssueClick, getAgent }: KanbanBoardProps) {
   // Group issues by status
   const issuesByStatus = COLUMNS.reduce((acc, col) => {
     acc[col.status] = issues.filter((i) => i.status === col.status);
@@ -41,6 +42,7 @@ export function KanbanBoard({ issues, onIssueClick }: KanbanBoardProps) {
           status={col.status}
           issues={issuesByStatus[col.status]}
           onIssueClick={onIssueClick}
+          getAgent={getAgent}
         />
       ))}
     </div>

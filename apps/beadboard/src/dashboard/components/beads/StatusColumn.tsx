@@ -10,6 +10,7 @@ interface StatusColumnProps {
   status: BeadIssue["status"];
   issues: BeadIssue[];
   onIssueClick?: (issue: BeadIssue) => void;
+  getAgent?: (issueId: string) => string | null;
   color?: string;
 }
 
@@ -21,7 +22,7 @@ const STATUS_CONFIG: Record<BeadIssue["status"], { color: string; icon: string }
   closed: { color: "var(--status-closed)", icon: "✓" },
 };
 
-export function StatusColumn({ title, status, issues, onIssueClick }: StatusColumnProps) {
+export function StatusColumn({ title, status, issues, onIssueClick, getAgent }: StatusColumnProps) {
   const config = STATUS_CONFIG[status];
 
   return (
@@ -100,6 +101,7 @@ export function StatusColumn({ title, status, issues, onIssueClick }: StatusColu
               key={issue.id}
               issue={issue}
               onClick={() => onIssueClick?.(issue)}
+              agent={getAgent?.(issue.id)}
             />
           ))
         )}
