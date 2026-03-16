@@ -10,13 +10,41 @@
         "vitest": "^3.2.4",
       },
     },
+    "apps/beadboard": {
+      "name": "@omniforge/beadboard",
+      "version": "0.1.0",
+      "dependencies": {
+        "@omniforge/core": "workspace:*",
+        "@omniforge/ui": "workspace:*",
+        "@primer/octicons-react": "^19.22.0",
+        "@radix-ui/react-accordion": "^1.2.12",
+        "@radix-ui/react-collapsible": "^1.1.12",
+        "@radix-ui/react-tooltip": "^1.2.8",
+        "@tanstack/react-virtual": "^3.13.21",
+        "hono": "^4.12.5",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+        "zustand": "^5.0.11",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "^4.2.1",
+        "@testing-library/jest-dom": "^6.9.1",
+        "@testing-library/react": "^16.3.2",
+        "@types/bun": "latest",
+        "@types/react": "^19.2.14",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.1.4",
+        "happy-dom": "^20.8.3",
+        "tailwindcss": "^4.2.1",
+        "typescript": "^5.9.3",
+        "vite": "^7.3.1",
+        "vitest": "^3.2.4",
+      },
+    },
     "apps/gitboard": {
       "name": "@omniforge/gitboard",
       "version": "0.1.0",
       "dependencies": {
-        "@omniforge/api-client": "workspace:*",
-        "@omniforge/core": "workspace:*",
-        "@omniforge/ui": "workspace:*",
         "@primer/octicons-react": "^19.22.0",
         "@radix-ui/react-accordion": "^1.2.12",
         "@radix-ui/react-collapsible": "^1.1.12",
@@ -237,6 +265,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@omniforge/api-client": ["@omniforge/api-client@workspace:packages/api-client"],
+
+    "@omniforge/beadboard": ["@omniforge/beadboard@workspace:apps/beadboard"],
 
     "@omniforge/core": ["@omniforge/core@workspace:packages/core"],
 
