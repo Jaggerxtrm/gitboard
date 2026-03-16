@@ -1,26 +1,24 @@
-# ── Stage 1: install deps ──────────────────────────────────────────────────────
-FROM oven/bun:1.2-alpine AS deps
-WORKDIR /app
-COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
+# Single-stage build for gitboard
+FROM oven/bun:1.2-alpine
 
-# ── Stage 2: build dashboard ───────────────────────────────────────────────────
-FROM deps AS build
+WORKDIR /app
+
+# Copy everything
 COPY . .
-RUN bun run build:dashboard
 
-# ── Stage 3: production runtime ────────────────────────────────────────────────
-FROM oven/bun:1.2-alpine AS production
-WORKDIR /app
+# Install dependencies
+RUN bun install
+
+# Build packages
+RUN bun run build:packages
+
+# Build dashboard
+RUN cd apps/gitboard && bun run build:dashboard
 
 # Non-root user + data directory
 RUN addgroup -g 1001 -S forge && adduser -S forge -u 1001 -G forge \
- && mkdir -p /home/forge/.agent-forge && chown forge:forge /home/forge/.agent-forge
-
-COPY --from=deps   --chown=forge:forge /app/node_modules ./node_modules
-COPY --from=build  --chown=forge:forge /app/dist         ./dist
-COPY --from=build  --chown=forge:forge /app/src          ./src
-COPY --from=build  --chown=forge:forge /app/package.json ./package.json
+ && mkdir -p /home/forge/.agent-forge && chown forge:forge /home/forge/.agent-forge \
+ && chown -R forge:forge /app
 
 USER forge
 
@@ -32,4 +30,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1
 
+WORKDIR /app/apps/gitboard
 CMD ["bun", "run", "src/index.ts"]

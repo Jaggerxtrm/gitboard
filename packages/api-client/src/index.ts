@@ -1,8 +1,8 @@
-// @omniforge/api-client
-// REST and WebSocket client for Omniforge services
+// @xtrm/api-client
+// REST and WebSocket client for xtrm services
 
 // Placeholder exports - will be implemented
-export const ApiClient = class {
+export class ApiClient {
   constructor(private baseUrl: string) {}
   
   async get<T>(path: string): Promise<T> {
@@ -20,9 +20,9 @@ export const ApiClient = class {
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
   }
-};
+}
 
-export const WsClient = class {
+export class WsClient {
   constructor(private url: string) {}
   
   connect(): void {
@@ -36,4 +36,4 @@ export const WsClient = class {
   close(): void {
     // Will implement
   }
-};
+}

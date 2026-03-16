@@ -1,0 +1,45 @@
+services:
+  gitboard:
+    container_name: gitboard
+    build:
+      context: .
+      dockerfile: apps/gitboard/Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - gitboard-data:/home/forge/.agent-forge
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - PORT=3000
+    restart: unless-stopped
+    networks:
+      - forge-network
+
+  beadboard:
+    container_name: beadboard
+    build:
+      context: .
+      dockerfile: apps/beadboard/Dockerfile
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount projects directory for .beads scanning
+      - ${HOME}/projects:/home/beadboard/projects:ro
+      # Mount .beads directories that might be outside projects
+      - ${HOME}/.beads:/home/beadboard/.beads:ro
+    environment:
+      - PORT=3001
+      - HOME=/home/beadboard
+    restart: unless-stopped
+    networks:
+      - forge-network
+    # extra_hosts allows connecting to host's dolt servers
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  forge-network:
+    driver: bridge
+
+volumes:
+  gitboard-data:

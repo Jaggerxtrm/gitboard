@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+*.tsbuildinfo
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+tests
+coverage
+
+# Development files
+.git
+.github
+.gitignore
+.env
+.env.*
+*.log
+*.md
+!README.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Beads data (mounted at runtime)
+.beads
+beads
