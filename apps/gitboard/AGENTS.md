@@ -202,23 +202,24 @@ Before saying "done":
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **unit.ai.board** (311 symbols, 667 relationships, 22 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **gitboard** (350 symbols, 759 relationships, 23 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST specify `repo: "gitboard"` in all gitnexus calls.** Without it, queries return empty results when multiple repos are indexed.
+- **MUST run impact analysis before editing any symbol.** Run `gitnexus_impact({target: "symbolName", direction: "upstream", repo: "gitboard"})` and report blast radius.
 - **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
 - **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept", repo: "gitboard"})` to find execution flows.
+- When you need full context on a symbol, use `gitnexus_context({name: "symbolName", repo: "gitboard"})`.
 
 ## When Debugging
 
 1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
 2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/unit.ai.board/process/{processName}` — trace the full execution flow step by step
+3. `READ gitnexus://repo/gitboard/process/{processName}` — trace the full execution flow step by step
 4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
 
 ## When Refactoring
@@ -257,10 +258,10 @@ This project is indexed by GitNexus as **unit.ai.board** (311 symbols, 667 relat
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/unit.ai.board/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/unit.ai.board/clusters` | All functional areas |
-| `gitnexus://repo/unit.ai.board/processes` | All execution flows |
-| `gitnexus://repo/unit.ai.board/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/gitboard/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/gitboard/clusters` | All functional areas |
+| `gitnexus://repo/gitboard/processes` | All execution flows |
+| `gitnexus://repo/gitboard/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 
@@ -284,3 +285,6 @@ Call `specialist_init` at the start of every session to bootstrap context and
 see available specialists. Use `use_specialist` or `start_specialist` to
 delegate heavy tasks (code review, bug hunting, deep reasoning) to the right
 specialist without user intervention.
+iew, bug hunting, deep reasoning) to the right
+specialist without user intervention.
+ervention.

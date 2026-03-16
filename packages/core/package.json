@@ -1,0 +1,44 @@
+{
+  "name": "@omniforge/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
+    },
+    "./utils/date": {
+      "import": "./dist/utils/date.js",
+      "types": "./dist/utils/date.d.ts"
+    },
+    "./utils/format": {
+      "import": "./dist/utils/format.js",
+      "types": "./dist/utils/format.d.ts"
+    },
+    "./utils/cn": {
+      "import": "./dist/utils/cn.js",
+      "types": "./dist/utils/cn.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.0.2"
+  }
+}
