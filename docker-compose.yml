@@ -1,46 +1,29 @@
 services:
-  gitboard:
-    container_name: gitboard
+  xtrm:
+    container_name: xtrm
     build:
       context: .
-      dockerfile: apps/gitboard/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     volumes:
-      - gitboard-data:/home/forge/.agent-forge
+      # XTRM data
+      - xtrm-data:/home/xtrm/.xtrm
+      # Projects for beadboard
+      - /home/dawid/projects:/home/xtrm/projects:ro,Z
+      - /home/dawid/.beads:/home/xtrm/.beads-host:ro,Z
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - PORT=3000
+      - HOME=/home/xtrm
+      - XDG_PROJECTS_DIR=/home/xtrm/projects
     restart: unless-stopped
-    networks:
-      - forge-network
-
-  beadboard:
-    container_name: beadboard
-    build:
-      context: .
-      dockerfile: apps/beadboard/Dockerfile
-    ports:
-      - "3001:3001"
-    volumes:
-      # Mount projects directory for .beads scanning (Z for SELinux labeling)
-      - /home/dawid/projects:/home/beadboard/projects:ro,Z
-      # Mount home .beads if it exists
-      - /home/dawid/.beads:/home/beadboard/.beads-host:ro,Z
-    environment:
-      - PORT=3001
-      - HOME=/home/beadboard
-      - XDG_PROJECTS_DIR=/home/beadboard/projects
-    restart: unless-stopped
-    networks:
-      - forge-network
-    # Allow connecting to host's dolt servers
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
 networks:
-  forge-network:
+  default:
     driver: bridge
 
 volumes:
-  gitboard-data:
+  xtrm-data:

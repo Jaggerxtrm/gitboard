@@ -6,8 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   root: "src/dashboard",
+  base: "/gitboard/",
   build: {
-    outDir: "../../dist/dashboard",
+    outDir: "../../dist/dashboard/gitboard",
     emptyOutDir: true,
   },
   server: {

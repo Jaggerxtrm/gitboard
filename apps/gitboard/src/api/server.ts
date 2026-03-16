@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
 import { createGithubRouter } from "./routes/github.ts";
+import { beadsRoutes } from "./routes/beads.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 
@@ -21,19 +22,54 @@ export function createApp(db: Database): {
 
   app.use("*", cors());
 
-  app.route("/api/github", createGithubRouter(db, registry));
-
+  // Health check
   app.get("/health", (c) => c.json({ status: "ok" }));
 
-  // Serve built dashboard in production (dist/dashboard/ present)
-  const distRoot = `${import.meta.dir}/../../dist/dashboard`;
-  app.get("*", async (c) => {
-    const pathname = new URL(c.req.url).pathname;
-    let file = Bun.file(`${distRoot}${pathname}`);
-    if (!(await file.exists())) file = Bun.file(`${distRoot}/index.html`);
-    if (!(await file.exists())) return c.text("Not found", 404);
-    return new Response(file);
-  });
+  // API routes
+  app.route("/api/github", createGithubRouter(db, registry));
+  app.route("/api/beads", beadsRoutes);
+
+  // Serve built dashboards in production
+  if (process.env.NODE_ENV === "production") {
+    // Gitboard - serve assets and SPA
+    app.use("/gitboard/assets/*", async (c) => {
+      const path = c.req.path.replace("/gitboard", "/gitboard");
+      const file = Bun.file(`./apps/gitboard/dist/dashboard${path}`);
+      if (await file.exists()) return new Response(file);
+      return c.notFound();
+    });
+
+    app.get("/gitboard", async (c) => {
+      const file = Bun.file("./apps/gitboard/dist/dashboard/gitboard/index.html");
+      return new Response(file, { headers: { "Content-Type": "text/html" } });
+    });
+
+    app.get("/gitboard/*", async (c) => {
+      const file = Bun.file("./apps/gitboard/dist/dashboard/gitboard/index.html");
+      return new Response(file, { headers: { "Content-Type": "text/html" } });
+    });
+
+    // Beadboard - serve assets and SPA
+    app.use("/beadboard/assets/*", async (c) => {
+      const path = c.req.path.replace("/beadboard", "/beadboard");
+      const file = Bun.file(`./apps/beadboard/dist/dashboard${path}`);
+      if (await file.exists()) return new Response(file);
+      return c.notFound();
+    });
+
+    app.get("/beadboard", async (c) => {
+      const file = Bun.file("./apps/beadboard/dist/dashboard/beadboard/index.html");
+      return new Response(file, { headers: { "Content-Type": "text/html" } });
+    });
+
+    app.get("/beadboard/*", async (c) => {
+      const file = Bun.file("./apps/beadboard/dist/dashboard/beadboard/index.html");
+      return new Response(file, { headers: { "Content-Type": "text/html" } });
+    });
+
+    // Root redirects to gitboard
+    app.get("/", (c) => c.redirect("/gitboard"));
+  }
 
   return { app, registry, wsHandler };
 }
@@ -77,5 +113,7 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
     },
   });
 
-  console.log(`[api] Server running at http://${hostname}:${port}`);
+  console.log(`[xtrm] Server running at http://${hostname}:${port}`);
+  console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
+  console.log(`[xtrm] - Beadboard: http://${hostname}:${port}/beadboard`);
 }

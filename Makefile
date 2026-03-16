@@ -1,22 +1,20 @@
-.PHONY: up down build logs ps restart clean prune token help \
-        gitboard beadboard all
+.PHONY: up down build logs ps restart clean prune token help
 
 # ── Config ──────────────────────────────────────────────────────────────────────
 COMPOSE      := podman-compose
 TOKEN        := $(shell gh auth token 2>/dev/null)
-PROJECTS_DIR := $(HOME)/projects
 
 # ── Lifecycle ───────────────────────────────────────────────────────────────────
 
-## Start all services (gitboard + beadboard)
+## Start XTRM server (gitboard + beadboard)
 up:
 	GITHUB_TOKEN=$(TOKEN) $(COMPOSE) up -d
 
-## Stop all containers
+## Stop containers
 down:
 	$(COMPOSE) down
 
-## Build all images
+## Build image
 build:
 	$(COMPOSE) build
 
@@ -25,60 +23,31 @@ rebuild:
 	$(COMPOSE) build --no-cache
 	GITHUB_TOKEN=$(TOKEN) $(COMPOSE) up -d
 
-## Restart all containers
+## Restart container
 restart:
 	$(COMPOSE) restart
 
-# ── Individual Services ─────────────────────────────────────────────────────────
-
-## Start only gitboard
-gitboard:
-	GITHUB_TOKEN=$(TOKEN) $(COMPOSE) up -d gitboard
-
-## Start only beadboard
-beadboard:
-	$(COMPOSE) up -d beadboard
-
-## Build gitboard only
-build-gitboard:
-	$(COMPOSE) build gitboard
-
-## Build beadboard only
-build-beadboard:
-	$(COMPOSE) build beadboard
-
 # ── Observability ───────────────────────────────────────────────────────────────
 
-## Tail all logs
+## Tail logs
 logs:
 	$(COMPOSE) logs -f
-
-## Tail gitboard logs
-logs-gitboard:
-	$(COMPOSE) logs -f gitboard
-
-## Tail beadboard logs
-logs-beadboard:
-	$(COMPOSE) logs -f beadboard
 
 ## Show running containers
 ps:
 	$(COMPOSE) ps
 
-## Open shell in gitboard
-shell-gitboard:
-	podman exec -it gitboard sh
-
-## Open shell in beadboard
-shell-beadboard:
-	podman exec -it beadboard sh
+## Open shell
+shell:
+	podman exec -it xtrm sh
 
 # ── Health Checks ──────────────────────────────────────────────────────────────
 
 ## Check health endpoints
 health:
-	@echo "gitboard:  $$(curl -s http://localhost:3000/health 2>/dev/null || echo 'FAILED')"
-	@echo "beadboard: $$(curl -s http://localhost:3001/health 2>/dev/null || echo 'FAILED')"
+	@echo "XTRM: $$(curl -s http://localhost:3000/health 2>/dev/null || echo 'FAILED')"
+	@echo "Gitboard: http://localhost:3000/gitboard"
+	@echo "Beadboard: http://localhost:3000/beadboard"
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────────
 
@@ -89,9 +58,8 @@ clean:
 ## Prune dangling images
 prune:
 	podman image prune -f
-	podman system prune -f
 
-## Full reset (clean + rebuild)
+## Full reset
 reset: clean build up
 
 # ── Dev helpers ─────────────────────────────────────────────────────────────────
@@ -100,26 +68,12 @@ reset: clean build up
 token:
 	@echo "GITHUB_TOKEN=$(shell echo $(TOKEN) | cut -c1-8)..."
 
-## Show project directories that would be mounted
-mounts:
-	@echo "Projects: $(PROJECTS_DIR)"
-	@echo "Beads: $(HOME)/.beads"
-	@ls -la $(PROJECTS_DIR) 2>/dev/null | head -10 || echo "No projects dir"
-
 ## Show this help
 help:
+	@echo "XTRM - Unified gitboard + beadboard server"
+	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
-	@echo "Lifecycle:"
-	@sed -n 's/^## //p' $(MAKEFILE_LIST) | grep -E "^(up|down|build|rebuild|restart)" | head -5
-	@echo ""
-	@echo "Services:"
-	@sed -n 's/^## //p' $(MAKEFILE_LIST) | grep -E "(gitboard|beadboard)" | head -8
-	@echo ""
-	@echo "Observability:"
-	@sed -n 's/^## //p' $(MAKEFILE_LIST) | grep -E "(logs|ps|shell|health)" | head -8
-	@echo ""
-	@echo "Cleanup:"
-	@sed -n 's/^## //p' $(MAKEFILE_LIST) | grep -E "(clean|prune|reset)" | head -3
+	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
 
 .DEFAULT_GOAL := help
