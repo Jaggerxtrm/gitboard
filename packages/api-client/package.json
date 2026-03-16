@@ -1,5 +1,5 @@
 {
-  "name": "@omniforge/api-client",
+  "name": "@xtrm/api-client",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,5 @@
 {
-  "name": "@omniforge/beadboard",
+  "name": "@xtrm/beadboard",
   "version": "0.1.0",
   "description": "Beads Issue Tracking Dashboard for Omniforge",
   "type": "module",
@@ -29,8 +29,8 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@omniforge/core": "workspace:*",
-    "@omniforge/ui": "workspace:*",
+    "@xtrm/core": "workspace:*",
+    "@xtrm/ui": "workspace:*",
     "@primer/octicons-react": "^19.22.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-collapsible": "^1.1.12",

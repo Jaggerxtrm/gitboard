@@ -1,5 +1,5 @@
 {
-  "name": "@omniforge/gitboard",
+  "name": "@xtrm/gitboard",
   "version": "0.1.0",
   "description": "GitHub Activity Dashboard for Omniforge",
   "type": "module",
