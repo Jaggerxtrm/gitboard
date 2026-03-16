@@ -21,8 +21,32 @@ export function createApp() {
 
   // Serve dashboard static files in production
   if (process.env.NODE_ENV === "production") {
-    app.use("*", serveStatic({ root: "./dist/dashboard" }));
-    app.get("*", serveStatic({ path: "./dist/dashboard/index.html" }));
+    const distPath = "./apps/beadboard/dist/dashboard";
+    
+    // Serve assets folder
+    app.use("/assets/*", serveStatic({ root: distPath }));
+    
+    // Catch-all for SPA - serve index.html for non-API routes
+    app.get("/*", async (c, next) => {
+      const path = c.req.path;
+      
+      // Skip API routes
+      if (path.startsWith("/api/") || path === "/health") {
+        return next();
+      }
+      
+      // Try to serve static file first
+      const file = Bun.file(`./apps/beadboard/dist/dashboard${path}`);
+      if (await file.exists()) {
+        return new Response(file);
+      }
+      
+      // Fallback to index.html for SPA
+      const indexFile = Bun.file(`./apps/beadboard/dist/dashboard/index.html`);
+      return new Response(indexFile, {
+        headers: { "Content-Type": "text/html" }
+      });
+    });
   }
 
   return app;
@@ -31,7 +55,7 @@ export function createApp() {
 export function startServer(port: number = 3001) {
   const app = createApp();
   
-  console.log(`[api] Server running at http://localhost:${port}`);
+  console.log(`[beadboard] Server running at http://localhost:${port}`);
   
   Bun.serve({
     port,
