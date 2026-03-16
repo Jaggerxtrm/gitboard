@@ -25,4 +25,10 @@ export default defineConfig({
       "@": "/src",
     },
   },
+  // Allow .ts and .tsx extensions in imports
+  optimizeDeps: {
+    esbuildOptions: {
+      resolveExtensions: [".tsx", ".ts", ".jsx", ".js", ".json"],
+    },
+  },
 });

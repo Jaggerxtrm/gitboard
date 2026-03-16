@@ -3,7 +3,7 @@
  */
 
 import type { BeadIssue } from "../../../types/beads.ts";
-import { BeadCard } from "./BeadCard.tsx";
+import { BeadCard } from "./BeadCard";
 
 interface StatusColumnProps {
   title: string;

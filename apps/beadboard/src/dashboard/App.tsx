@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { KanbanBoard } from "./components/beads/index.tsx";
+import { KanbanBoard } from "./components/beads";
 import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
 import type { BeadIssue, BeadsProject, Memory, Interaction } from "../types/beads.ts";

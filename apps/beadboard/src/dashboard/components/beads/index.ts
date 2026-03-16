@@ -1,3 +1,3 @@
-export { BeadCard } from "./BeadCard.tsx";
-export { StatusColumn } from "./StatusColumn.tsx";
-export { KanbanBoard } from "./KanbanBoard.tsx";
+export { BeadCard } from "./BeadCard";
+export { StatusColumn } from "./StatusColumn";
+export { KanbanBoard } from "./KanbanBoard";

@@ -3,7 +3,7 @@
  */
 
 import type { BeadIssue } from "../../../types/beads.ts";
-import { StatusColumn } from "./StatusColumn.tsx";
+import { StatusColumn } from "./StatusColumn";
 
 interface KanbanBoardProps {
   issues: BeadIssue[];
