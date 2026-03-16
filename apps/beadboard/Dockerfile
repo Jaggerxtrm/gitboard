@@ -18,12 +18,6 @@ RUN cd apps/beadboard && bun run build:dashboard
 # Remove broken symlinks in app node_modules so bun uses root node_modules
 RUN rm -rf apps/beadboard/node_modules apps/gitboard/node_modules
 
-# Non-root user  
-RUN addgroup -g 1002 -S beadboard && adduser -S beadboard -u 1002 -G beadboard \
- && chown -R beadboard:beadboard /app
-
-USER beadboard
-
 ENV PORT=3001
 ENV NODE_ENV=production
 ENV HOME=/home/beadboard

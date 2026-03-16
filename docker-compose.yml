@@ -23,17 +23,18 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      # Mount projects directory for .beads scanning
-      - ${HOME}/projects:/home/beadboard/projects:ro
-      # Mount .beads directories that might be outside projects
-      - ${HOME}/.beads:/home/beadboard/.beads:ro
+      # Mount projects directory for .beads scanning (Z for SELinux labeling)
+      - /home/dawid/projects:/home/beadboard/projects:ro,Z
+      # Mount home .beads if it exists
+      - /home/dawid/.beads:/home/beadboard/.beads-host:ro,Z
     environment:
       - PORT=3001
       - HOME=/home/beadboard
+      - XDG_PROJECTS_DIR=/home/beadboard/projects
     restart: unless-stopped
     networks:
       - forge-network
-    # extra_hosts allows connecting to host's dolt servers
+    # Allow connecting to host's dolt servers
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

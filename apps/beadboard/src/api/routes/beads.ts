@@ -16,8 +16,12 @@ const doltClients: Map<number, DoltClient> = new Map();
 
 function getScanner(): ProjectScanner {
   if (!scanner) {
+    // In container: use mounted projects directory
+    // On host: use HOME directory
+    const searchPath = process.env.XDG_PROJECTS_DIR || 
+                       (process.env.HOME ? `${process.env.HOME}/projects` : "/home");
     scanner = new ProjectScanner({
-      searchPath: process.env.HOME || "/home",
+      searchPath,
       maxDepth: 5,
       excludePatterns: ["node_modules", ".git", "Library", "Applications", ".cargo", ".npm", ".rustup"],
     });
@@ -27,8 +31,11 @@ function getScanner(): ProjectScanner {
 
 function getDoltClient(port: number): DoltClient {
   if (!doltClients.has(port)) {
+    // In container: connect to host via host.docker.internal
+    // On host: connect to localhost
+    const host = process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1";
     doltClients.set(port, new DoltClient({
-      host: "127.0.0.1",
+      host,
       port,
     }));
   }
