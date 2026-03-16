@@ -27,7 +27,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@omniforge/core": "workspace:*",
+    "@xtrm/core": "workspace:*",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

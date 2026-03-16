@@ -7,7 +7,8 @@ import { join, basename } from "path";
 import type { BeadsProject } from "../types/beads.ts";
 
 export interface ProjectScannerConfig {
-  scanPaths: string[];
+  searchPath?: string;
+  scanPaths?: string[];
   excludePatterns: string[];
   maxDepth: number;
 }
@@ -32,8 +33,14 @@ export class ProjectScanner {
   async scanAll(): Promise<BeadsProject[]> {
     const projects: BeadsProject[] = [];
 
-    for (const scanPath of this.config.scanPaths) {
-      const found = await this.scanDirectory(scanPath, 0);
+    const pathsToScan = this.config.scanPaths?.length 
+      ? this.config.scanPaths 
+      : this.config.searchPath 
+        ? [this.config.searchPath] 
+        : [];
+
+    for (const scanPath of pathsToScan) {
+      const found = await this.scanPath(scanPath, 0);
       projects.push(...found);
     }
 
@@ -46,9 +53,18 @@ export class ProjectScanner {
   }
 
   /**
+   * Scan for projects - main entry point
+   * If searchPath is provided in config, scans that path
+   * Otherwise scans all scanPaths
+   */
+  async scanDirectory(): Promise<BeadsProject[]> {
+    return this.scanAll();
+  }
+
+  /**
    * Scan a single directory for .beads/ folders
    */
-  private async scanDirectory(dirPath: string, depth: number): Promise<BeadsProject[]> {
+  private async scanPath(dirPath: string, depth: number): Promise<BeadsProject[]> {
     if (depth > this.config.maxDepth) return [];
 
     const projects: BeadsProject[] = [];
@@ -69,7 +85,7 @@ export class ProjectScanner {
         if (this.config.excludePatterns.includes(entry.name)) continue;
 
         const subPath = join(dirPath, entry.name);
-        const subProjects = await this.scanDirectory(subPath, depth + 1);
+        const subProjects = await this.scanPath(subPath, depth + 1);
         projects.push(...subProjects);
       }
     } catch {
