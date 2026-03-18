@@ -8,8 +8,8 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "beads", label: "Beads" },
 ];
 
-// Beadboard URL - can be configured via env
-const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "http://localhost:3001";
+// Beadboard is served from the same server at /beadboard
+const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>("github");
@@ -52,7 +52,7 @@ export function App() {
         </nav>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <a 
-            href="http://localhost:3001" 
+            href="/beadboard" 
             target="_blank" 
             rel="noopener noreferrer"
             style={{
