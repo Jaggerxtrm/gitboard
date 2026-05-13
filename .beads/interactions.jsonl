@@ -21,3 +21,4 @@
 {"id":"int-fdeec246","kind":"field_change","created_at":"2026-05-13T13:46:43.645413541Z","actor":"you@example.com","issue_id":"forge-55b.4","extra":{"field":"status","new_value":"open","old_value":"closed"}}
 {"id":"int-18745b78","kind":"field_change","created_at":"2026-05-13T13:50:02.733807018Z","actor":"you@example.com","issue_id":"forge-55b.4","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
 {"id":"int-96e7ce80","kind":"field_change","created_at":"2026-05-13T14:04:55.774983439Z","actor":"you@example.com","issue_id":"forge-55b.4","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Done: upgraded Beadboard project rail with counts/source health and validated dashboard build."}}
+{"id":"int-734510c9","kind":"tool_call","created_at":"2026-05-13T14:06:15.61553785Z","actor":"you@example.com","issue_id":"forge-55b.4","model":"openai-codex/gpt-5.3-codex","tool_name":"reviewer","exit_code":0}
