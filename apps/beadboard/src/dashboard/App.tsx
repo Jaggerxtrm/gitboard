@@ -49,7 +49,11 @@ export function App() {
         const projs = await api.getProjects();
         setProjects(projs);
         if (projs.length > 0 && !selectedProjectId) {
-          selectProject(projs[0].id);
+          const requestedProject = new URLSearchParams(window.location.search).get("project");
+          const matchedProject = requestedProject
+            ? projs.find((project) => project.id === requestedProject || project.name === requestedProject)
+            : null;
+          selectProject((matchedProject ?? projs[0]).id);
         }
       } catch (err) {
         setError("Failed to load projects");

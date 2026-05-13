@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ConsoleRepoRail, type ConsoleRepoRecord } from "./components/console/ConsoleRepoRail.tsx";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 
 type Tab = "github" | "beads";
@@ -21,6 +23,7 @@ export function App() {
 
 function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
   const isPreview = view === "design-preview";
+  const [selectedConsoleRepo, setSelectedConsoleRepo] = useState<ConsoleRepoRecord | null>(null);
 
   return (
     <div className={isPreview ? "westworld-app design-preview-container" : "westworld-app"} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
@@ -98,14 +101,18 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
           </a>
         </div>
       </header>
-      <main className="gitboard-main" style={{ flex: 1, minHeight: 0 }}>
+      <main className="gitboard-main" style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
         {isPreview ? (
           <DesignPreview />
-        ) : activeTab === "github" ? (
-          <GithubPanel />
+        ) : (
+          <ConsoleRepoRail selectedRepoId={selectedConsoleRepo?.id ?? null} onSelect={setSelectedConsoleRepo} />
+        )}
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+        {isPreview ? null : activeTab === "github" ? (
+          <GithubPanel hideRepoSidebar selectedRepo={selectedConsoleRepo?.github?.fullName ?? null} />
         ) : (
           <iframe 
-            src={BEADBOARD_URL}
+            src={selectedConsoleRepo?.beads ? `${BEADBOARD_URL}?project=${encodeURIComponent(selectedConsoleRepo.beads.projectId)}` : BEADBOARD_URL}
             style={{ 
               width: '100%', 
               height: '100%', 
@@ -115,6 +122,7 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
             title="Beadboard"
           />
         )}
+        </div>
       </main>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StarIcon } from "@primer/octicons-react";
 import { useGithubStore } from "../../stores/github.ts";
 import { useGithubActivity } from "../../hooks/useGithubActivity.ts";
@@ -64,7 +64,7 @@ function TabBar({
   );
 }
 
-export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => void } = {}) {
+export function GithubPanel({ onMount = useGithubActivity, hideRepoSidebar = false, selectedRepo = null }: { onMount?: () => void; hideRepoSidebar?: boolean; selectedRepo?: string | null } = {}) {
   onMount();
 
   const [socialOpen, setSocialOpen] = useState(false);
@@ -131,17 +131,18 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   return (
     <div className="gitboard-shell" style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* Left: Repo Sidebar */}
-      <RepoSidebar
-        repos={repos}
-        stats={repoStats}
-        selectedRepos={filter.repos ?? []}
-        unreadRepos={unreadRepos}
-        lastEventAt={lastEventAt}
-        ownerUsername={ownerUsername}
-        onSelect={(r) => setFilter({ repos: [r] })}
-        onReset={resetFilter}
-      />
+      {!hideRepoSidebar && (
+        <RepoSidebar
+          repos={repos}
+          stats={repoStats}
+          selectedRepos={filter.repos ?? []}
+          unreadRepos={unreadRepos}
+          lastEventAt={lastEventAt}
+          ownerUsername={ownerUsername}
+          onSelect={(r) => setFilter({ repos: [r] })}
+          onReset={resetFilter}
+        />
+      )}
 
       {/* Center: Tabbed timeline */}
       <div className="gitboard-center" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
