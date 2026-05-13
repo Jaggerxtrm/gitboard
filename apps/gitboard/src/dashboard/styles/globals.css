@@ -2450,3 +2450,17 @@ body {
   font-family: var(--font-mono);
   font-size: 10px;
 }
+
+.pr-linked-records a {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border: 1px solid rgba(163,113,247,0.24);
+  background: rgba(163,113,247,0.08);
+  color: #cdb8ff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-decoration: none;
+}
+.pr-linked-records a:hover { border-color: rgba(163,113,247,0.42); }
