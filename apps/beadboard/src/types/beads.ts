@@ -1,16 +1,28 @@
 // Beadboard domain types
 
-export type Status = "open" | "in_progress" | "blocked" | "in_review" | "closed";
-export type Priority = 0 | 1 | 2 | 3 | 4;
-export type IssueType = "bug" | "feature" | "task" | "epic" | "chore";
+export type Status = "open" | "in_progress" | "blocked" | "in_review" | "closed" | (string & {});
+export type Priority = 0 | 1 | 2 | 3 | 4 | (number & {});
+export type IssueType = "bug" | "feature" | "task" | "epic" | "chore" | (string & {});
+export type ProjectSourceKind = "dolt" | "sqlite" | "jsonl" | "unknown";
+export type ProjectSourceState = "available" | "missing" | "unhealthy";
+
+export interface ProjectSourceHealth {
+  kind: ProjectSourceKind;
+  state: ProjectSourceState;
+  path?: string;
+  detail?: string;
+}
 
 export interface BeadsProject {
-  id: string;              // Project ID from metadata.json
-  name: string;            // Display name
-  path: string;            // Absolute path to repo root
-  beadsPath: string;       // Path to .beads/ directory
-  doltPort?: number;       // Dolt server port if running
-  doltDatabase?: string;   // Dolt database name
+  id: string;
+  name: string;
+  path: string;
+  beadsPath: string;
+  doltPort?: number;
+  doltDatabase?: string;
+  source?: ProjectSourceKind;
+  sourceHealth?: ProjectSourceHealth[];
+  sourcePriority?: ProjectSourceKind[];
   status: "active" | "idle" | "error";
   lastScanned: string;
   issueCount: number;
@@ -29,17 +41,17 @@ export interface BeadIssue {
   updated_at: string;
   closed_at?: string;
   close_reason?: string;
-  
-  // Project reference
   project_id: string;
-  
-  // Dependencies
   dependencies: BeadDependency[];
   parent_id?: string;
   related_ids: string[];
-  
-  // Labels
   labels: string[];
+}
+
+export interface BeadIssueDetail extends BeadIssue {
+  dependents: BeadDependency[];
+  source: ProjectSourceKind;
+  sourceHealth: ProjectSourceHealth[];
 }
 
 export interface BeadDependency {

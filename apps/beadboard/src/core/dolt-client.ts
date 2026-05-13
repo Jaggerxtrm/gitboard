@@ -4,12 +4,12 @@
 
 import mysql from "mysql2/promise";
 import type { Connection, RowDataPacket } from "mysql2/promise";
-import type { BeadIssue, BeadDependency, IssueFilters } from "../types/beads.ts";
+import type { BeadIssue, BeadDependency, IssueFilters, BeadIssueDetail, ProjectSourceHealth } from "../types/beads.ts";
 
 export interface DoltConfig {
   host: string;
   port: number;
-  user: string;
+  user?: string;
   database?: string;
 }
 
@@ -20,14 +20,11 @@ export class DoltClient {
   constructor(config: DoltConfig) {
     this.config = {
       database: "dolt",
-      user: "root",
       ...config,
+      user: config.user ?? "root",
     };
   }
 
-  /**
-   * Connect to the dolt database
-   */
   async connect(): Promise<void> {
     if (this.connection) return;
 
@@ -39,9 +36,6 @@ export class DoltClient {
     });
   }
 
-  /**
-   * Close the connection
-   */
   async disconnect(): Promise<void> {
     if (this.connection) {
       await this.connection.end();
@@ -49,92 +43,95 @@ export class DoltClient {
     }
   }
 
-  /**
-   * Check if connected
-   */
   isConnected(): boolean {
     return this.connection !== null;
   }
 
-  /**
-   * Get issues with optional filters
-   */
   async getIssues(filters: IssueFilters = {}): Promise<BeadIssue[]> {
+    const rows = await this.selectIssues(filters);
+    const issues: BeadIssue[] = [];
+    for (const row of rows) issues.push(await this.toIssue(row));
+    return issues;
+  }
+
+  async getIssue(issueId: string): Promise<BeadIssueDetail | null> {
+    const [row] = await this.selectIssues({ limit: 1, offset: 0 }, issueId);
+    if (!row) return null;
+
+    const issue = await this.toIssue(row);
+    return {
+      ...issue,
+      dependents: await this.getDependents(issueId),
+      source: "dolt",
+      sourceHealth: [{ kind: "dolt", state: "available" }],
+    };
+  }
+
+  private async selectIssues(filters: IssueFilters, issueId?: string): Promise<RowDataPacket[]> {
     await this.connect();
 
     const conditions: string[] = [];
     const params: unknown[] = [];
 
-    if (filters.status && filters.status.length > 0) {
-      const placeholders = filters.status.map(() => "?").join(", ");
-      conditions.push(`status IN (${placeholders})`);
+    if (issueId) {
+      conditions.push("id = ?");
+      params.push(issueId);
+    }
+    if (filters.status?.length) {
+      conditions.push(`status IN (${filters.status.map(() => "?").join(", ")})`);
       params.push(...filters.status);
     }
-
-    if (filters.priority && filters.priority.length > 0) {
-      const placeholders = filters.priority.map(() => "?").join(", ");
-      conditions.push(`priority IN (${placeholders})`);
+    if (filters.priority?.length) {
+      conditions.push(`priority IN (${filters.priority.map(() => "?").join(", ")})`);
       params.push(...filters.priority);
     }
-
-    if (filters.issue_type && filters.issue_type.length > 0) {
-      const placeholders = filters.issue_type.map(() => "?").join(", ");
-      conditions.push(`issue_type IN (${placeholders})`);
+    if (filters.issue_type?.length) {
+      conditions.push(`issue_type IN (${filters.issue_type.map(() => "?").join(", ")})`);
       params.push(...filters.issue_type);
     }
-
     if (filters.search) {
       conditions.push("(title LIKE ? OR description LIKE ?)");
       params.push(`%${filters.search}%`, `%${filters.search}%`);
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const limit = filters.limit ?? 100;
     const offset = filters.offset ?? 0;
 
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      `SELECT 
-        id, title, description, status, priority, issue_type,
-        owner, created_at, created_by, updated_at, closed_at, close_reason
-       FROM issues 
+      `SELECT id, title, description, status, priority, issue_type, owner, created_at, created_by, updated_at, closed_at, close_reason, parent_id
+       FROM issues
        ${where}
-       ORDER BY priority ASC, created_at DESC 
+       ORDER BY priority ASC, created_at DESC
        LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
 
-    // Fetch dependencies and labels for each issue
-    const issues: BeadIssue[] = [];
-    for (const row of rows) {
-      const dependencies = await this.getDependencies(row.id);
-      const labels = await this.getLabels(row.id);
-
-      issues.push({
-        id: row.id,
-        title: row.title,
-        description: row.description,
-        status: row.status as BeadIssue["status"],
-        priority: row.priority as BeadIssue["priority"],
-        issue_type: row.issue_type as BeadIssue["issue_type"],
-        owner: row.owner,
-        created_at: row.created_at,
-        created_by: row.created_by,
-        updated_at: row.updated_at ?? row.created_at,
-        closed_at: row.closed_at ?? undefined,
-        close_reason: row.close_reason ?? undefined,
-        project_id: "", // Set by caller
-        dependencies,
-        labels,
-        related_ids: [],
-      });
-    }
-
-    return issues;
+    return rows;
   }
 
-  /**
-   * Get dependencies for an issue
-   */
+  private async toIssue(row: RowDataPacket): Promise<BeadIssue> {
+    return {
+      id: String(row.id),
+      title: String(row.title ?? ""),
+      description: row.description ?? null,
+      status: String(row.status ?? "open") as BeadIssue["status"],
+      priority: Number(row.priority ?? 2) as BeadIssue["priority"],
+      issue_type: String(row.issue_type ?? "task") as BeadIssue["issue_type"],
+      owner: row.owner ?? null,
+      created_at: String(row.created_at ?? ""),
+      created_by: row.created_by ?? null,
+      updated_at: String(row.updated_at ?? row.created_at ?? ""),
+      closed_at: row.closed_at ?? undefined,
+      close_reason: row.close_reason ?? undefined,
+      project_id: "",
+      dependencies: await this.getDependencies(String(row.id)),
+      parent_id: row.parent_id ?? undefined,
+      related_ids: await this.getRelatedIds(String(row.id)),
+      labels: await this.getLabels(String(row.id)),
+    };
+  }
+
   private async getDependencies(issueId: string): Promise<BeadDependency[]> {
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
       `SELECT d.depends_on_id as id, d.type as dependency_type, i.title, i.status
@@ -144,78 +141,77 @@ export class DoltClient {
       [issueId]
     );
 
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      status: row.status as BeadDependency["status"],
-      dependency_type: row.dependency_type as BeadDependency["dependency_type"],
+    return (rows as RowDataPacket[]).map((row) => ({
+      id: String(row.id),
+      title: String(row.title ?? ""),
+      status: String(row.status ?? "open") as BeadDependency["status"],
+      dependency_type: String(row.dependency_type ?? "blocks") as BeadDependency["dependency_type"],
     }));
   }
 
-  /**
-   * Get labels for an issue
-   */
-  private async getLabels(issueId: string): Promise<string[]> {
+  private async getDependents(issueId: string): Promise<BeadDependency[]> {
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      "SELECT label FROM labels WHERE issue_id = ?",
+      `SELECT d.issue_id as id, d.type as dependency_type, i.title, i.status
+       FROM dependencies d
+       JOIN issues i ON d.issue_id = i.id
+       WHERE d.depends_on_id = ?`,
       [issueId]
     );
 
-    return rows.map((row) => row.label);
+    return (rows as RowDataPacket[]).map((row) => ({
+      id: String(row.id),
+      title: String(row.title ?? ""),
+      status: String(row.status ?? "open") as BeadDependency["status"],
+      dependency_type: String(row.dependency_type ?? "blocked_by") as BeadDependency["dependency_type"],
+    }));
   }
 
-  /**
-   * Get closed issues ordered by closed_at DESC
-   */
+  private async getRelatedIds(issueId: string): Promise<string[]> {
+    try {
+      const [rows] = await this.connection!.execute<RowDataPacket[]>(
+        "SELECT related_issue_id FROM issue_related WHERE issue_id = ?",
+        [issueId]
+      );
+      return (rows as RowDataPacket[]).map((row) => String(row.related_issue_id)).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  private async getLabels(issueId: string): Promise<string[]> {
+    try {
+      const [rows] = await this.connection!.execute<RowDataPacket[]>(
+        "SELECT label FROM labels WHERE issue_id = ?",
+        [issueId]
+      );
+      return (rows as RowDataPacket[]).map((row) => String(row.label)).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
   async getClosedIssues(limit: number = 50): Promise<BeadIssue[]> {
     await this.connect();
 
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      `SELECT 
-        id, title, description, status, priority, issue_type,
-        owner, created_at, created_by, updated_at, closed_at, close_reason
-       FROM issues 
+      `SELECT id, title, description, status, priority, issue_type, owner, created_at, created_by, updated_at, closed_at, close_reason, parent_id
+       FROM issues
        WHERE status = 'closed' AND closed_at IS NOT NULL
-       ORDER BY closed_at DESC 
+       ORDER BY closed_at DESC
        LIMIT ?`,
       [limit]
     );
 
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      description: row.description,
-      status: "closed" as const,
-      priority: row.priority as BeadIssue["priority"],
-      issue_type: row.issue_type as BeadIssue["issue_type"],
-      owner: row.owner,
-      created_at: row.created_at,
-      created_by: row.created_by,
-      updated_at: row.updated_at ?? row.created_at,
-      closed_at: row.closed_at ?? undefined,
-      close_reason: row.close_reason ?? undefined,
-      project_id: "",
-      dependencies: [],
-      labels: [],
-      related_ids: [],
-    }));
+    const issues: BeadIssue[] = [];
+    for (const row of rows) issues.push(await this.toIssue(row));
+    return issues;
   }
 
-  /**
-   * Get issue count by status
-   */
-  async getStats(): Promise<{
-    total: number;
-    open: number;
-    in_progress: number;
-    blocked: number;
-    closed: number;
-  }> {
+  async getStats(): Promise<{ total: number; open: number; in_progress: number; blocked: number; closed: number }> {
     await this.connect();
 
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      `SELECT 
-        COUNT(*) as total,
+      `SELECT COUNT(*) as total,
         SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open,
         SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
         SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) as blocked,
@@ -225,11 +221,11 @@ export class DoltClient {
 
     const row = rows[0];
     return {
-      total: row.total,
-      open: row.open,
-      in_progress: row.in_progress,
-      blocked: row.blocked,
-      closed: row.closed,
+      total: Number(row.total ?? 0),
+      open: Number(row.open ?? 0),
+      in_progress: Number(row.in_progress ?? 0),
+      blocked: Number(row.blocked ?? 0),
+      closed: Number(row.closed ?? 0),
     };
   }
 }
