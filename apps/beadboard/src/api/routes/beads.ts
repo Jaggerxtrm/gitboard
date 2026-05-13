@@ -40,6 +40,10 @@ function getSqliteReader(dbPath: string): BeadsReader {
   return sqliteReaders.get(dbPath)!;
 }
 
+function withProjectId<T extends { project_id: string }>(value: T, projectId: string): T {
+  return { ...value, project_id: projectId };
+}
+
 function sourceOrder(projectSource: ProjectSourceKind): ProjectSourceKind[] {
   const order: ProjectSourceKind[] = ["dolt", "sqlite", "jsonl", "unknown"];
   return projectSource === "unknown" ? order : [projectSource, ...order.filter((source) => source !== projectSource)];
@@ -80,7 +84,7 @@ beadsRoutes.get("/projects/:id/issues/:issueId", async (c) => {
     const detail = await getIssueDetailFromProject(projectId, issueId);
 
     if (!detail) return c.json({ error: "Issue not found" }, 404);
-    return c.json({ issue: detail });
+    return c.json({ issue: withProjectId(detail, projectId) });
   } catch (error) {
     console.error("[api] Error getting issue detail:", error);
     return c.json({ error: "Failed to get issue detail" }, 500);
@@ -105,9 +109,8 @@ beadsRoutes.get("/projects/:id/memories", async (c) => {
     const project = getScanner().getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
 
-    const reader = new BeadsReader({} as any);
-    const memories = await reader.getMemories(`${project.beadsPath}/knowledge.jsonl`);
-    return c.json({ memories: memories.map((memory) => ({ ...memory, project_id: projectId })) });
+    const memories = await readJsonlMemories(`${project.beadsPath}/knowledge.jsonl`);
+    return c.json({ memories: memories.map((memory) => withProjectId(memory, projectId)) });
   } catch (error) {
     console.error("[api] Error getting memories:", error);
     return c.json({ memories: [] });
@@ -121,9 +124,8 @@ beadsRoutes.get("/projects/:id/interactions", async (c) => {
     const project = getScanner().getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
 
-    const reader = new BeadsReader({} as any);
-    let interactions = await reader.getInteractions(`${project.beadsPath}/interactions.jsonl`);
-    interactions = interactions.map((interaction) => ({ ...interaction, project_id: projectId }));
+    let interactions = await readJsonlInteractions(`${project.beadsPath}/interactions.jsonl`);
+    interactions = interactions.map((interaction) => withProjectId(interaction, projectId));
     if (issueId) interactions = interactions.filter((interaction) => interaction.issue_id === issueId);
     return c.json({ interactions });
   } catch (error) {
@@ -196,7 +198,7 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
     if (source === "dolt" && project.doltPort) {
       try {
         const detail = await getDoltClient(project.doltPort).getIssue(issueId);
-        if (detail) return detail;
+        if (detail) return withProjectId(detail, projectId);
       } catch {
         continue;
       }
@@ -207,7 +209,7 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
       if (!dbPath) continue;
       try {
         const detail = await getSqliteReader(dbPath).getIssue(issueId);
-        if (detail) return detail;
+        if (detail) return withProjectId(detail, projectId);
       } catch {
         continue;
       }
@@ -270,4 +272,22 @@ async function getStatsFromProject(projectId: string): Promise<{
   }, { total: 0, open: 0, in_progress: 0, blocked: 0, closed: 0, by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 }, by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 } });
 
   return stats;
+}
+
+async function readJsonlMemories(path: string) {
+  try {
+    const content = await Bun.file(path).text();
+    return content.split("\n").flatMap((line) => BeadsReader.parseMemoryLine(line));
+  } catch {
+    return [];
+  }
+}
+
+async function readJsonlInteractions(path: string) {
+  try {
+    const content = await Bun.file(path).text();
+    return content.split("\n").flatMap((line) => BeadsReader.parseInteractionLine(line));
+  } catch {
+    return [];
+  }
 }

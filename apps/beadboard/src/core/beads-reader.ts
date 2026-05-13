@@ -7,8 +7,6 @@ import type { Database } from "bun:sqlite";
 import type { BeadIssue, BeadDependency, Memory, Interaction, IssueFilters, BeadIssueDetail } from "../types/beads.ts";
 
 export class BeadsReader {
-  private columnCache = new Map<string, Set<string>>();
-
   constructor(private db: Database) {}
 
   async getIssues(filters: IssueFilters): Promise<BeadIssue[]> {
@@ -37,20 +35,7 @@ export class BeadsReader {
   async getMemories(knowledgePath: string): Promise<Memory[]> {
     try {
       const content = await readFile(knowledgePath, "utf-8");
-      const lines = content.trim().split("\n");
-
-      return lines.filter((line) => line.trim()).map((line) => {
-        const data = JSON.parse(line);
-        return {
-          id: data.id,
-          content: data.content,
-          type: data.type || "learned",
-          tags: data.tags || [],
-          created_at: data.created_at,
-          issue_id: data.issue_id,
-          project_id: "",
-        } as Memory;
-      });
+      return content.split("\n").flatMap((line) => BeadsReader.parseMemoryLine(line));
     } catch {
       return [];
     }
@@ -59,22 +44,7 @@ export class BeadsReader {
   async getInteractions(interactionsPath: string): Promise<Interaction[]> {
     try {
       const content = await readFile(interactionsPath, "utf-8");
-      const lines = content.trim().split("\n");
-
-      return lines.filter((line) => line.trim()).map((line) => {
-        const data = JSON.parse(line);
-        return {
-          id: data.id,
-          kind: data.kind || "tool_call",
-          created_at: data.created_at,
-          actor: data.actor,
-          issue_id: data.issue_id,
-          model: data.model,
-          tool_name: data.tool_name,
-          exit_code: data.exit_code,
-          project_id: "",
-        } as Interaction;
-      });
+      return content.split("\n").flatMap((line) => BeadsReader.parseInteractionLine(line));
     } catch {
       return [];
     }
@@ -88,6 +58,50 @@ export class BeadsReader {
     if (lower.includes("gemini")) return "gemini";
     if (lower.includes("gpt")) return "other";
     return "other";
+  }
+
+  static parseMemoryLine(line: string): Memory[] {
+    if (!line.trim()) return [];
+    try {
+      const data = JSON.parse(line) as Partial<Memory> & { type?: Memory["type"] };
+      if (typeof data.id !== "string" || typeof data.content !== "string" || typeof data.created_at !== "string") {
+        return [];
+      }
+      return [{
+        id: data.id,
+        content: data.content,
+        type: data.type || "learned",
+        tags: Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === "string") : [],
+        created_at: data.created_at,
+        issue_id: typeof data.issue_id === "string" ? data.issue_id : undefined,
+        project_id: "",
+      }];
+    } catch {
+      return [];
+    }
+  }
+
+  static parseInteractionLine(line: string): Interaction[] {
+    if (!line.trim()) return [];
+    try {
+      const data = JSON.parse(line) as Partial<Interaction>;
+      if (typeof data.id !== "string" || typeof data.created_at !== "string" || typeof data.actor !== "string" || typeof data.issue_id !== "string") {
+        return [];
+      }
+      return [{
+        id: data.id,
+        kind: data.kind || "tool_call",
+        created_at: data.created_at,
+        actor: data.actor,
+        issue_id: data.issue_id,
+        model: typeof data.model === "string" ? data.model : undefined,
+        tool_name: typeof data.tool_name === "string" ? data.tool_name : undefined,
+        exit_code: typeof data.exit_code === "number" ? data.exit_code : undefined,
+        project_id: "",
+      }];
+    } catch {
+      return [];
+    }
   }
 
   private queryIssues(
