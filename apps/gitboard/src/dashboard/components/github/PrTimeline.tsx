@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   GitPullRequestIcon,
@@ -188,6 +188,95 @@ function buildConversation(pr: GithubPr, detail: GithubPrDetail | null): Convers
   return items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 }
 
+function renderPrBodyText(value: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const lines = value
+    .replace(/<\/?details[^>]*>/gi, "\n")
+    .replace(/<summary[^>]*>/gi, "\n### ")
+    .replace(/<\/summary>/gi, "\n")
+    .replace(/<h[1-4][^>]*>/gi, "\n### ")
+    .replace(/<\/h[1-4]>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/blockquote>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .split("\n");
+
+  let paragraph: string[] = [];
+  let listItems: ReactNode[] = [];
+
+  const renderInline = (line: string, key: string): ReactNode => {
+    const pattern = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)|`([^`]+)`/g;
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    for (const match of line.matchAll(pattern)) {
+      if (match.index === undefined) continue;
+      if (match.index > lastIndex) parts.push(line.slice(lastIndex, match.index));
+      if (match[1] && match[2]) {
+        parts.push(<a key={`${key}-link-${match.index}`} href={match[2]} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{match[1]}</a>);
+      } else if (match[3]) {
+        parts.push(<code key={`${key}-code-${match.index}`}>{match[3]}</code>);
+      }
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < line.length) parts.push(line.slice(lastIndex));
+    return parts.length > 0 ? parts : line;
+  };
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    nodes.push(<p key={`p-${nodes.length}`}>{paragraph.map((line, index) => <span key={index}>{renderInline(line, `p-${nodes.length}-${index}`)}{index < paragraph.length - 1 ? <br /> : null}</span>)}</p>);
+    paragraph = [];
+  };
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    nodes.push(<ul key={`ul-${nodes.length}`}>{listItems}</ul>);
+    listItems = [];
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      nodes.push(<h3 key={`h-${index}`}>{renderInline(heading[2], `h-${index}`)}</h3>);
+      return;
+    }
+
+    const list = /^[-*]\s+(.+)$/.exec(trimmed);
+    if (list) {
+      flushParagraph();
+      listItems.push(<li key={`li-${index}`}>{renderInline(list[1], `li-${index}`)}</li>);
+      return;
+    }
+
+    flushList();
+    paragraph.push(line);
+  });
+
+  flushParagraph();
+  flushList();
+  return nodes.length > 0 ? nodes : [value];
+}
+
+function RichPrBody({ body }: { body: string }) {
+  return <div className="pr-rich-text">{renderPrBodyText(body)}</div>;
+}
+
 function ConversationEntry({ item }: { item: ConversationItem }) {
   const [showMore, setShowMore] = useState(false);
   const body = item.body?.trim();
@@ -205,7 +294,7 @@ function ConversationEntry({ item }: { item: ConversationItem }) {
         </div>
         {display && (
           <div>
-            <div className="pr-body-text">{showMore ? body : display.visible}</div>
+            <div className="pr-body-text"><RichPrBody body={showMore ? body : display.visible} /></div>
             {display.hasMore && !showMore && (
               <button className="pr-show-more" onClick={(e) => { e.stopPropagation(); setShowMore(true); }}>
                 show full text
