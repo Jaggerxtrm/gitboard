@@ -1978,6 +1978,93 @@ body {
   padding: 0 14px 16px 90px;
 }
 
+.pr-section {
+  margin-top: 10px;
+}
+
+.pr-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pr-section-label-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-blue);
+}
+
+.pr-section-label-title {
+  color: var(--text-primary);
+}
+
+.pr-section-label-status {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.pr-file-list {
+  display: grid;
+  gap: 4px;
+}
+
+.pr-file-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(142,210,220,0.055);
+}
+
+.pr-file-status {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pr-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.pr-file-diff {
+  display: inline-flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.pr-linked-beads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pr-linked-bead {
+  padding: 0 6px;
+  border: 1px solid rgba(142,210,220,0.12);
+  background: rgba(142,210,220,0.035);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 18px;
+}
+
 .pr-compact-summary {
   padding: 8px 0 6px;
   border-top: 1px solid rgba(142,210,220,0.08);
@@ -2137,12 +2224,16 @@ body {
 .pr-entry-marker {
   position: relative;
   z-index: 1;
-  width: 7px;
-  height: 7px;
-  margin: 7px auto 0;
+  width: 16px;
+  height: 16px;
+  margin: 3px auto 0;
   border-radius: 50%;
   background: rgba(142,210,220,0.55);
   box-shadow: 0 0 10px rgba(142,210,220,0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #181818;
 }
 
 .pr-conversation-entry.body .pr-entry-marker { background: var(--accent-blue); }
