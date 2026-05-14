@@ -1019,19 +1019,13 @@ body {
 }
 
 .westworld-app .gitboard-main::before {
-  background:
-    radial-gradient(ellipse at 72% 18%, rgba(142, 210, 220, 0.105), transparent 34%),
-    radial-gradient(ellipse at 28% 76%, rgba(82, 121, 132, 0.09), transparent 38%),
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
   filter: blur(10px);
   opacity: 0.9;
 }
 
 .westworld-app .gitboard-main::after {
-  background:
-    background: var(--surface-secondary);
-    background: var(--surface-secondary);
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
   background-size: 28px 28px, 28px 28px, 180px 180px;
   mask-image: radial-gradient(circle at 52% 42%, black, transparent 82%);
   opacity: 0.7;
@@ -1043,9 +1037,7 @@ body {
 }
 
 .westworld-app .gitboard-main > div > div:first-child {
-  background:
-    background: var(--surface-secondary);
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
   box-shadow:
     inset -1px 0 0 rgba(144, 205, 216, 0.10),
     inset -12px 0 32px rgba(142, 210, 220, 0.018),
@@ -1069,8 +1061,7 @@ body {
 }
 
 .westworld-app .gitboard-main > div > div:first-child button[aria-pressed="true"] {
-  background:
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.026),
     inset 16px 0 28px rgba(142, 210, 220, 0.035);
@@ -1103,9 +1094,7 @@ body {
 
 .westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child {
   height: 34px !important;
-  background:
-    background: var(--surface-secondary);
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
 }
 
 .westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child span {
@@ -1178,9 +1167,7 @@ body {
 
 .westworld-app .gitboard-main [style*="maxHeight: 160"],
 .westworld-app .gitboard-main [style*="max-height: 160"] {
-  background:
-    background: var(--surface-secondary);
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1291,8 +1278,7 @@ body {
 .westworld-app .ww-nav button[style*="var(--text-primary)"],
 .westworld-app .ww-nav a[style*="var(--text-primary)"] {
   color: var(--text-primary) !important;
-  background:
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
 }
 
 .ww-action-cluster > a {
@@ -1517,9 +1503,7 @@ body {
 .westworld-app .gitboard-statsbar {
   height: var(--ww-header-h) !important;
   padding: 0 14px !important;
-  background:
-    background: var(--surface-secondary);
-    background: var(--surface-secondary);
+  background: var(--surface-secondary);
 }
 
 .westworld-app .gitboard-stat {
