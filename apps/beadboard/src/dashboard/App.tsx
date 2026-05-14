@@ -7,14 +7,19 @@ import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
 
-type Tab = "issues" | "board" | "closed" | "memories";
+type Tab = "issues" | "board" | "closed" | "memories" | "triage";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "issues", label: "Feed" },
   { id: "board", label: "Board" },
   { id: "closed", label: "Closed" },
   { id: "memories", label: "Memories" },
+  { id: "triage", label: "Triage" },
 ];
+
+const STALE_DAYS = 7;
+const VELOCITY_WINDOWS_DAYS = [7, 30] as const;
+const PRIORITY_WEIGHT: Record<number, number> = { 0: 1, 1: 0.75, 2: 0.5, 3: 0.25, 4: 0 };
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>("issues");
@@ -166,7 +171,8 @@ export function App() {
 
   const visibleIssues = useMemo(() => (showOpenOnly ? issues.filter((issue) => issue.status !== "closed") : issues), [issues, showOpenOnly]);
   const visibleClosedIssues = useMemo(() => (showOpenOnly ? closedIssues.filter((issue) => issue.status === "closed") : closedIssues), [closedIssues, showOpenOnly]);
-  const segmentCounts = useMemo(() => ({ feed: visibleIssues.length, board: visibleIssues.length, closed: visibleClosedIssues.length, memories: memories.length }), [memories.length, visibleClosedIssues.length, visibleIssues.length]);
+  const triage = useMemo(() => buildTriageView(issues, closedIssues), [closedIssues, issues]);
+  const segmentCounts = useMemo(() => ({ feed: visibleIssues.length, board: visibleIssues.length, closed: visibleClosedIssues.length, memories: memories.length, triage: triage.topPicks.length }), [memories.length, triage.topPicks.length, visibleClosedIssues.length, visibleIssues.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
@@ -220,6 +226,7 @@ export function App() {
           {activeTab === "board" && <KanbanBoard issues={visibleIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
           {activeTab === "closed" && <ClosedIssuesPanel issues={visibleClosedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
+          {activeTab === "triage" && <TriagePanel triage={triage} />}
         </div>
       </main>
     </div>
@@ -236,4 +243,139 @@ function MemoriesPanel({ memories }: { memories: Memory[] }) {
 
 function AgentBadge({ agent }: { agent: string }) {
   return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
+}
+
+type TriageView = {
+  topPicks: TriageIssue[];
+  quickWins: TriageIssue[];
+  staleIssues: TriageIssue[];
+  velocity: { last7: number; last30: number };
+  health: {
+    countsByStatus: Record<string, number>;
+    countsByType: Record<string, number>;
+    countsByPriority: Record<string, number>;
+  };
+};
+
+type TriageIssue = BeadIssue & { score: number; daysIdle: number; blockerCount: number };
+
+function TriagePanel({ triage }: { triage: TriageView }) {
+  return (
+    <div style={{ padding: 12, display: 'grid', gap: 12 }}>
+      <section style={panelStyle}>
+        <h2 style={sectionTitleStyle}>Top picks</h2>
+        <IssueList issues={triage.topPicks} emptyText="No open issues" />
+      </section>
+      <section style={panelStyle}>
+        <h2 style={sectionTitleStyle}>Quick wins</h2>
+        <IssueList issues={triage.quickWins} emptyText="No quick wins" />
+      </section>
+      <section style={panelStyle}>
+        <h2 style={sectionTitleStyle}>Stale issues</h2>
+        <IssueList issues={triage.staleIssues} emptyText="No stale issues" />
+      </section>
+      <section style={panelStyle}>
+        <h2 style={sectionTitleStyle}>Velocity</h2>
+        <div style={statsGridStyle}>
+          <StatCard label="Last 7 days" value={String(triage.velocity.last7)} />
+          <StatCard label="Last 30 days" value={String(triage.velocity.last30)} />
+        </div>
+      </section>
+      <section style={panelStyle}>
+        <h2 style={sectionTitleStyle}>Project health</h2>
+        <HealthGrid triage={triage} />
+      </section>
+    </div>
+  );
+}
+
+function IssueList({ issues, emptyText }: { issues: TriageIssue[]; emptyText: string; }) {
+  if (issues.length === 0) return <div style={emptyStyle}>{emptyText}</div>;
+  return <div style={{ display: 'grid', gap: 8 }}>{issues.map((issue) => <div key={issue.id} style={issueCardStyle}><div style={issueRowStyle}><span style={issueIdStyle}>{issue.id}</span><span style={issueScoreStyle}>{issue.score.toFixed(3)}</span></div><div style={issueTitleStyle}>{issue.title}</div><div style={issueMetaStyle}>P{issue.priority} • {issue.daysIdle}d idle • blockers {issue.blockerCount}</div></div>)}</div>;
+}
+
+function HealthGrid({ triage }: { triage: TriageView }) {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <StatGrid title="By status" items={triage.health.countsByStatus} />
+      <StatGrid title="By type" items={triage.health.countsByType} />
+      <StatGrid title="By priority" items={triage.health.countsByPriority} />
+    </div>
+  );
+}
+
+function StatGrid({ title, items }: { title: string; items: Record<string, number> }) {
+  return <div><div style={sectionTitleStyle}>{title}</div><div style={statsGridStyle}>{Object.entries(items).map(([label, value]) => <StatCard key={label} label={label} value={String(value)} />)}</div></div>;
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return <div style={statCardStyle}><div style={issueMetaStyle}>{label}</div><div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{value}</div></div>;
+}
+
+const panelStyle = { background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', padding: 12 } as const;
+const sectionTitleStyle = { marginBottom: 8, color: 'var(--text-primary)', fontSize: 'var(--text-sm)', fontWeight: 600 } as const;
+const statsGridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 } as const;
+const statCardStyle = { background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', padding: 8 } as const;
+const emptyStyle = { color: 'var(--text-muted)', fontSize: 'var(--text-sm)' } as const;
+const issueCardStyle = { background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', padding: 8 } as const;
+const issueRowStyle = { display: 'flex', justifyContent: 'space-between', gap: 8 } as const;
+const issueIdStyle = { fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' } as const;
+const issueScoreStyle = { color: 'var(--accent)', fontSize: 'var(--text-xs)' } as const;
+const issueTitleStyle = { color: 'var(--text-primary)', fontWeight: 500, marginTop: 2 } as const;
+const issueMetaStyle = { color: 'var(--text-muted)', fontSize: 'var(--text-xs)', marginTop: 2 } as const;
+
+function buildTriageView(issues: BeadIssue[], closedIssues: BeadIssue[]): TriageView {
+  const openIssues = issues.filter((issue) => issue.status !== "closed");
+  const scoredIssues = openIssues.map((issue) => ({ ...issue, ...getTriageSignals(issue, openIssues) }));
+  const topPicks = [...scoredIssues].sort((left, right) => right.score - left.score).slice(0, 5);
+  const quickWins = scoredIssues.filter((issue) => issue.priority >= 2 && issue.blockerCount === 0).sort((left, right) => left.priority - right.priority || right.score - left.score).slice(0, 5);
+  const staleIssues = scoredIssues.filter((issue) => issue.daysIdle >= STALE_DAYS).sort((left, right) => right.daysIdle - left.daysIdle || right.score - left.score).slice(0, 5);
+  return {
+    topPicks,
+    quickWins,
+    staleIssues,
+    velocity: getVelocity(closedIssues),
+    health: getHealthCounts(issues, closedIssues),
+  };
+}
+
+function getTriageSignals(issue: BeadIssue, openIssues: BeadIssue[]) {
+  const daysIdle = getDaysSince(issue.updated_at ?? issue.created_at);
+  const blockerCount = issue.dependencies.filter((dependency) => dependency.dependency_type === "blocks" || dependency.dependency_type === "blocked_by").length;
+  const openCount = openIssues.length;
+  const priorityWeight = PRIORITY_WEIGHT[issue.priority as number] ?? 0;
+  const stalenessWeight = Math.min(daysIdle / 30, 1);
+  const openLoadWeight = Math.min(openCount / 100, 1);
+  return { daysIdle, blockerCount, score: priorityWeight + stalenessWeight + openLoadWeight };
+}
+
+function getDaysSince(isoDate: string): number {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  return Math.max(0, Math.floor(diff / 86_400_000));
+}
+
+function getVelocity(closedIssues: BeadIssue[]) {
+  const now = Date.now();
+  const closedAt = (issue: BeadIssue) => new Date(issue.closed_at ?? issue.updated_at).getTime();
+  return {
+    last7: closedIssues.filter((issue) => now - closedAt(issue) <= VELOCITY_WINDOWS_DAYS[0] * 86_400_000).length,
+    last30: closedIssues.filter((issue) => now - closedAt(issue) <= VELOCITY_WINDOWS_DAYS[1] * 86_400_000).length,
+  };
+}
+
+function getHealthCounts(issues: BeadIssue[], closedIssues: BeadIssue[]) {
+  const allIssues = [...issues, ...closedIssues];
+  return {
+    countsByStatus: countBy(allIssues, (issue) => issue.status),
+    countsByType: countBy(allIssues, (issue) => issue.issue_type),
+    countsByPriority: countBy(allIssues, (issue) => `P${issue.priority}`),
+  };
+}
+
+function countBy<T>(items: T[], keyForItem: (item: T) => string) {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    const key = keyForItem(item);
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
 }
