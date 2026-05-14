@@ -79,7 +79,7 @@ body {
     radial-gradient(circle at 18% 12%, rgba(92, 164, 176, 0.18), transparent 34%),
     radial-gradient(circle at 78% 8%, rgba(44, 79, 96, 0.22), transparent 32%),
     linear-gradient(135deg, #081117 0%, #0b151d 46%, #0a0f14 100%);
-  color: #e7f0f1;
+  color: var(--text-primary);
   isolation: isolate;
 }
 
@@ -115,7 +115,7 @@ body {
 
 .fui-eyebrow,
 .fui-title span {
-  color: #7fb8c1;
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -130,7 +130,7 @@ body {
   font-weight: 650;
   letter-spacing: -0.055em;
   line-height: 0.94;
-  color: #eef7f7;
+  color: var(--text-primary);
   text-shadow: 0 0 30px rgba(126, 215, 229, 0.11);
 }
 
@@ -150,7 +150,7 @@ body {
 }
 
 .fui-status-cluster strong {
-  color: #d9ecef;
+  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
@@ -209,7 +209,7 @@ body {
 }
 
 .fui-title h2 {
-  color: #e4eff0;
+  color: var(--text-primary);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.015em;
@@ -278,7 +278,7 @@ body {
 .fui-security-ring span {
   font-family: var(--font-mono);
   font-size: 25px;
-  color: #edf8f8;
+  color: var(--text-primary);
 }
 
 .fui-security-ring small {
@@ -309,7 +309,7 @@ body {
 
 .fui-metric-card strong {
   display: block;
-  color: #edf8f8;
+  color: var(--text-primary);
   font-size: 30px;
   font-weight: 560;
   letter-spacing: -0.04em;
@@ -328,7 +328,7 @@ body {
 }
 
 .fui-metric-card em {
-  color: #7b8f95;
+  color: var(--text-muted);
   font-size: 11px;
   font-style: normal;
 }
@@ -351,7 +351,7 @@ body {
   padding: 6px 10px;
   border: 1px solid rgba(126, 215, 229, 0.18);
   border-radius: 999px;
-  color: #8fb8be;
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 11px;
   background: rgba(126, 215, 229, 0.045);
@@ -398,7 +398,7 @@ body {
   border: 1px solid rgba(126, 215, 229, 0.2);
   border-radius: 999px;
   background: rgba(7, 16, 22, 0.82);
-  color: #cfe4e7;
+  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -413,7 +413,7 @@ body {
   box-shadow: 0 0 12px rgba(126, 215, 229, 0.75);
 }
 
-.fui-node.warn span { background: #d6b66b; box-shadow: 0 0 12px rgba(214, 182, 107, 0.7); }
+.fui-node.warn span { background: var(--accent-orange); box-shadow: 0 0 12px rgba(214, 182, 107, 0.7); }
 .fui-node.hot span { animation: fui-pulse 2.8s ease-in-out infinite; }
 
 .fui-floating-window {
@@ -560,7 +560,7 @@ body {
 
 .fui-command-bar h1 {
   margin: 0;
-  color: #edf6f7;
+  color: var(--text-primary);
   font-size: 20px;
   font-weight: 650;
   letter-spacing: -0.035em;
@@ -617,7 +617,7 @@ body {
 }
 
 .fui-tabbar button.is-active {
-  color: #e2eff1;
+  color: var(--text-primary);
   border-bottom-color: #7ed7e5;
 }
 
@@ -639,7 +639,7 @@ body {
 
 .fui-feed-item strong {
   display: block;
-  color: #dce9eb;
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 560;
   overflow: hidden;
@@ -655,7 +655,7 @@ body {
 
 .fui-feed-item em,
 .fui-feed-item time {
-  color: #7c9298;
+  color: var(--text-muted);
   font-size: 11px;
   font-style: normal;
   text-align: right;
@@ -670,7 +670,7 @@ body {
 }
 
 .fui-event-dot.review,
-.fui-event-dot.guarded { background: #d6b66b; box-shadow: 0 0 14px rgba(214, 182, 107, 0.45); }
+.fui-event-dot.guarded { background: var(--accent-orange); box-shadow: 0 0 14px rgba(214, 182, 107, 0.45); }
 
 .fui-dense .fui-region {
   margin-top: 5px;
@@ -691,7 +691,7 @@ body {
   display: grid;
   gap: 8px;
   margin-top: 16px;
-  color: #8ca2a7;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
@@ -710,7 +710,7 @@ body {
 
 .fui-mini-stack strong {
   margin-left: auto;
-  color: #d5e6e8;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -756,22 +756,20 @@ body {
 .fui-dense .fui-panel {
   border-color: rgba(128, 166, 174, 0.13);
   border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(18, 28, 35, 0.74), rgba(8, 14, 19, 0.86)),
-    rgba(8, 14, 19, 0.78);
+  background: var(--surface-secondary);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.035),
     0 12px 34px rgba(0,0,0,0.22);
 }
 
 .fui-dense .fui-panel::before {
-  background: linear-gradient(135deg, rgba(151, 202, 210, 0.055), transparent 28%);
+  background: var(--surface-tertiary);
   opacity: 1;
 }
 
 .fui-command-bar {
   min-height: 60px;
-  background: linear-gradient(180deg, rgba(15, 25, 32, 0.82), rgba(7, 13, 18, 0.74));
+  background: var(--surface-secondary);
 }
 
 .fui-command-bar h1 {
@@ -782,14 +780,14 @@ body {
 
 .fui-eyebrow,
 .fui-title span {
-  color: #79aeb6;
+  color: var(--text-secondary);
   font-size: 9px;
   letter-spacing: 0.16em;
 }
 
 .fui-title h2 {
   font-size: 13px;
-  color: #dbe8ea;
+  color: var(--text-primary);
 }
 
 .fui-dense .fui-status-cluster {
@@ -801,7 +799,7 @@ body {
 .fui-pulse,
 .fui-node span,
 .fui-event-dot {
-  background: #8ed2dc;
+  background: var(--accent-blue);
   box-shadow: 0 0 10px rgba(142, 210, 220, 0.34);
 }
 
@@ -817,7 +815,7 @@ body {
 
 .fui-metric-card small,
 .fui-chip {
-  color: #8ed2dc;
+  color: var(--accent-blue);
 }
 
 .fui-feed-item {
@@ -874,7 +872,7 @@ body {
 .fui-dense .fui-log-stream code {
   border-left-color: rgba(142, 210, 220, 0.22);
   background: rgba(255,255,255,0.015);
-  color: #93aab0;
+  color: var(--text-muted);
 }
 
 .fui-dense .fui-region.is-active {
@@ -973,7 +971,7 @@ body {
 
 .westworld-app [style*="fontFamily: var(--font-mono)"],
 .westworld-app [style*="font-family: var(--font-mono)"] {
-  color: #cfe4e7 !important;
+  color: var(--text-primary) !important;
 }
 
 .westworld-app [style*="rgba(255,255,255,0.04)"] {
@@ -987,7 +985,7 @@ body {
 
 .westworld-app ::selection {
   background: rgba(142, 210, 220, 0.22);
-  color: #f1fbfb;
+  color: var(--text-primary);
 }
 
 .westworld-app ::-webkit-scrollbar-thumb {
@@ -1024,16 +1022,16 @@ body {
   background:
     radial-gradient(ellipse at 72% 18%, rgba(142, 210, 220, 0.105), transparent 34%),
     radial-gradient(ellipse at 28% 76%, rgba(82, 121, 132, 0.09), transparent 38%),
-    linear-gradient(115deg, transparent 0 34%, rgba(167, 220, 226, 0.032) 46%, transparent 63%);
+    background: var(--surface-secondary);
   filter: blur(10px);
   opacity: 0.9;
 }
 
 .westworld-app .gitboard-main::after {
   background:
-    linear-gradient(var(--ww-line-soft) 1px, transparent 1px),
-    linear-gradient(90deg, var(--ww-line-soft) 1px, transparent 1px),
-    linear-gradient(135deg, transparent 0 48%, rgba(142, 210, 220, 0.045) 49%, transparent 50%);
+    background: var(--surface-secondary);
+    background: var(--surface-secondary);
+    background: var(--surface-secondary);
   background-size: 28px 28px, 28px 28px, 180px 180px;
   mask-image: radial-gradient(circle at 52% 42%, black, transparent 82%);
   opacity: 0.7;
@@ -1046,8 +1044,8 @@ body {
 
 .westworld-app .gitboard-main > div > div:first-child {
   background:
-    linear-gradient(180deg, rgba(15, 25, 32, 0.86), rgba(8, 14, 19, 0.91)),
-    linear-gradient(90deg, rgba(142, 210, 220, 0.055), transparent 34%) !important;
+    background: var(--surface-secondary);
+    background: var(--surface-secondary);
   box-shadow:
     inset -1px 0 0 rgba(144, 205, 216, 0.10),
     inset -12px 0 32px rgba(142, 210, 220, 0.018),
@@ -1060,7 +1058,7 @@ body {
   height: 22px;
   padding: 7px 16px 0;
   border-bottom: 1px solid rgba(144, 205, 216, 0.11);
-  color: #6f8d94;
+  color: var(--text-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -1072,7 +1070,7 @@ body {
 
 .westworld-app .gitboard-main > div > div:first-child button[aria-pressed="true"] {
   background:
-    linear-gradient(90deg, rgba(142, 210, 220, 0.092), rgba(142, 210, 220, 0.018) 62%, transparent) !important;
+    background: var(--surface-secondary);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.026),
     inset 16px 0 28px rgba(142, 210, 220, 0.035);
@@ -1106,8 +1104,8 @@ body {
 .westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child {
   height: 34px !important;
   background:
-    linear-gradient(180deg, rgba(18, 30, 38, 0.72), rgba(8, 14, 19, 0.78)),
-    repeating-linear-gradient(90deg, transparent 0 92px, rgba(144,205,216,0.055) 92px 93px) !important;
+    background: var(--surface-secondary);
+    background: var(--surface-secondary);
 }
 
 .westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child span {
@@ -1140,7 +1138,7 @@ body {
   top: 10px;
   bottom: 10px;
   width: 1px;
-  background: linear-gradient(transparent, rgba(142,210,220,0.18), transparent);
+  background: var(--surface-secondary);
   opacity: 0.75;
 }
 
@@ -1155,12 +1153,12 @@ body {
 }
 
 .westworld-app .gitboard-main a[href*="github.com"] {
-  color: #c9dcdf !important;
+  color: var(--text-primary) !important;
 }
 
 .westworld-app .gitboard-main code,
 .westworld-app .gitboard-main pre {
-  color: #9cb6bb;
+  color: var(--text-secondary);
   text-shadow: none;
 }
 
@@ -1181,8 +1179,8 @@ body {
 .westworld-app .gitboard-main [style*="maxHeight: 160"],
 .westworld-app .gitboard-main [style*="max-height: 160"] {
   background:
-    linear-gradient(180deg, rgba(8,14,19,0.88), rgba(11,20,27,0.78)),
-    linear-gradient(90deg, rgba(142,210,220,0.04), transparent) !important;
+    background: var(--surface-secondary);
+    background: var(--surface-secondary);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1287,14 +1285,14 @@ body {
 .westworld-app .ww-nav button:hover,
 .westworld-app .ww-nav a:hover {
   background: rgba(142, 210, 220, 0.045) !important;
-  color: #d8e8ea !important;
+  color: var(--text-primary) !important;
 }
 
 .westworld-app .ww-nav button[style*="var(--text-primary)"],
 .westworld-app .ww-nav a[style*="var(--text-primary)"] {
-  color: #e8f4f5 !important;
+  color: var(--text-primary) !important;
   background:
-    linear-gradient(180deg, rgba(142,210,220,0.075), rgba(142,210,220,0.025)) !important;
+    background: var(--surface-secondary);
 }
 
 .ww-action-cluster > a {
@@ -1314,7 +1312,7 @@ body {
   padding: 0 10px;
   border: 1px solid rgba(142, 210, 220, 0.12);
   background: rgba(5, 11, 16, 0.38);
-  color: #8ea8ad;
+  color: var(--text-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -1325,7 +1323,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #8ed2dc;
+  background: var(--accent-blue);
   box-shadow: 0 0 10px rgba(142,210,220,0.46);
 }
 
@@ -1343,7 +1341,7 @@ body {
   top: 8px;
   width: 72px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(142,210,220,0.32));
+  background: var(--surface-secondary);
   pointer-events: none;
 }
 
@@ -1370,7 +1368,7 @@ body {
   --ww-header-h: 32px;
   --ww-row-h: 50px;
   --ww-cut: 7px;
-  --ww-cyan: #8ed2dc;
+  --ww-cyan: var(--accent-blue);
   --ww-panel-bg: rgba(8, 15, 21, 0.78);
   --ww-panel-bg-2: rgba(13, 24, 31, 0.82);
 }
@@ -1402,7 +1400,7 @@ body {
   justify-content: center;
   padding: 0 12px;
   border-color: rgba(142,210,220,0.14);
-  background: linear-gradient(180deg, rgba(142,210,220,0.055), rgba(142,210,220,0.018));
+  background: var(--surface-secondary);
   clip-path: polygon(0 0, calc(100% - var(--ww-cut)) 0, 100% var(--ww-cut), 100% 100%, var(--ww-cut) 100%, 0 calc(100% - var(--ww-cut)));
   font-size: 10px !important;
 }
@@ -1430,8 +1428,8 @@ body {
 .westworld-app .ww-nav .ww-nav-item:first-child { border-left: 0 !important; }
 
 .westworld-app .ww-nav .ww-nav-item.is-active {
-  color: #e8f4f5 !important;
-  background: linear-gradient(180deg, rgba(142,210,220,0.095), rgba(142,210,220,0.03)) !important;
+  color: var(--text-primary) !important;
+  background: var(--surface-secondary);
   box-shadow: inset 0 -1px 0 rgba(142,210,220,0.64), inset 0 0 18px rgba(142,210,220,0.035);
 }
 
@@ -1452,9 +1450,7 @@ body {
 }
 
 .westworld-app .gitboard-repo-rail {
-  background:
-    linear-gradient(180deg, var(--ww-panel-bg-2), rgba(7,13,18,0.92)),
-    linear-gradient(90deg, rgba(142,210,220,0.04), transparent 44%) !important;
+  background: var(--surface-secondary) !important;
   box-shadow: inset -1px 0 0 rgba(142,210,220,0.11), inset -16px 0 36px rgba(142,210,220,0.018);
 }
 
@@ -1462,7 +1458,7 @@ body {
   height: var(--ww-header-h) !important;
   padding: 0 14px !important;
   border-left-width: 0 !important;
-  color: #7d969c !important;
+  color: var(--text-muted) !important;
   font-size: 9px !important;
   letter-spacing: 0.16em !important;
   background: rgba(6,12,17,0.66) !important;
@@ -1473,14 +1469,14 @@ body {
   margin-left: auto;
   width: 48px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(142,210,220,0.28));
+  background: var(--surface-secondary);
 }
 
 .westworld-app .repo-group-heading {
   padding: 10px 14px 5px !important;
   font-size: 9px !important;
   letter-spacing: 0.15em !important;
-  color: #6e858b !important;
+  color: var(--text-muted) !important;
 }
 
 .westworld-app .repo-row {
@@ -1503,7 +1499,7 @@ body {
 }
 
 .westworld-app .repo-row.is-active {
-  background: linear-gradient(90deg, rgba(142,210,220,0.085), rgba(142,210,220,0.018) 62%, transparent) !important;
+  background: var(--surface-secondary);
 }
 
 .westworld-app .repo-row.is-active::before,
@@ -1520,8 +1516,8 @@ body {
   height: var(--ww-header-h) !important;
   padding: 0 14px !important;
   background:
-    linear-gradient(180deg, rgba(16,28,36,0.72), rgba(7,14,20,0.76)),
-    repeating-linear-gradient(90deg, transparent 0 118px, rgba(142,210,220,0.055) 118px 119px) !important;
+    background: var(--surface-secondary);
+    background: var(--surface-secondary);
 }
 
 .westworld-app .gitboard-stat {
@@ -1549,8 +1545,8 @@ body {
 }
 
 .westworld-app .gitboard-tabbar .gitboard-tab.is-active {
-  color: #e7f1f2 !important;
-  background: linear-gradient(180deg, rgba(142,210,220,0.075), rgba(142,210,220,0.018)) !important;
+  color: var(--text-primary) !important;
+  background: var(--surface-secondary);
   box-shadow: inset 0 -1px 0 rgba(142,210,220,0.60);
 }
 
@@ -1559,7 +1555,7 @@ body {
   padding: 8px 14px 0 !important;
   border-top: 1px solid rgba(142,210,220,0.045);
   background: rgba(5, 11, 16, 0.54) !important;
-  color: #6f858b !important;
+  color: var(--text-muted) !important;
   font-size: 9px !important;
   letter-spacing: 0.16em !important;
 }
@@ -1582,7 +1578,7 @@ body {
 }
 
 .westworld-app .timeline-row.is-selected {
-  background: linear-gradient(90deg, rgba(142,210,220,0.072), rgba(142,210,220,0.018) 46%, transparent) !important;
+  background: var(--surface-secondary);
 }
 
 .westworld-app .timeline-row.is-selected::before {
@@ -1611,7 +1607,7 @@ body {
   padding: 8px 14px 0;
   border-bottom: 1px solid rgba(142,210,220,0.08);
   background: rgba(5, 11, 16, 0.56);
-  color: #6f858b;
+  color: var(--text-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -1643,7 +1639,7 @@ body {
 }
 
 .pr-row.is-expanded {
-  background: linear-gradient(90deg, rgba(142,210,220,0.052), var(--surface-selected) 46%, var(--surface-1));
+  background: var(--surface-secondary);
 }
 
 .pr-row.merged::before { background: rgba(159,184,201,0.86); box-shadow: none; }
@@ -1667,7 +1663,7 @@ body {
 }
 
 .pr-number {
-  color: #7d969c;
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -1688,7 +1684,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #dfebed;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 540;
 }
@@ -1698,7 +1694,7 @@ body {
   gap: 10px;
   margin-top: 4px;
   overflow: hidden;
-  color: #748b91;
+  color: var(--text-muted);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -1727,7 +1723,7 @@ body {
   padding: 0 8px;
   border: 1px solid var(--border-subtle);
   background: transparent;
-  color: #a5cbd1;
+  color: var(--accent-blue);
   border-radius: 0;
   font-size: 9px;
   font-weight: 700;
@@ -1739,26 +1735,26 @@ body {
 .pr-state-pill.merged {
   border-color: rgba(159,184,201,0.20);
   background: transparent;
-  color: #c4d4df;
+  color: var(--text-primary);
 }
 
 .pr-state-pill.closed {
   border-color: rgba(209,132,127,0.22);
   background: transparent;
-  color: #d7aaa6;
+  color: var(--accent-red);
 }
 
 .pr-state-pill.open {
   border-color: rgba(142,210,220,0.20);
   background: transparent;
-  color: #b5dfe5;
+  color: var(--accent-blue);
 }
 
 .pr-row-diff {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  color: #7c9298;
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10px;
   white-space: nowrap;
@@ -1771,7 +1767,7 @@ body {
 }
 
 .pr-chevron {
-  color: #71878d;
+  color: var(--text-muted);
   transition: transform 150ms ease;
 }
 
@@ -1805,7 +1801,7 @@ body {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
-  color: #7fa4ab;
+  color: var(--text-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.15em;
@@ -1816,13 +1812,13 @@ body {
   max-height: 220px;
   overflow: auto;
   white-space: pre-wrap;
-  color: #9fb3b8;
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.55;
 }
 
 .pr-empty-note {
-  color: #6f858b;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
@@ -1831,7 +1827,7 @@ body {
   padding: 0;
   border: 0;
   background: none;
-  color: #8ed2dc;
+  color: var(--accent-blue);
   cursor: pointer;
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -1848,7 +1844,7 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  color: #748b91;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -1866,7 +1862,7 @@ body {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #d7e6e8;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -1907,22 +1903,22 @@ body {
 }
 
 .pr-lifecycle-step.is-active > span {
-  background: #8ed2dc;
+  background: var(--accent-blue);
   box-shadow: 0 0 10px rgba(142,210,220,0.34);
 }
 
-.pr-lifecycle-step.merged.is-active > span { background: #a7b6d9; }
-.pr-lifecycle-step.closed.is-active > span { background: #d1847f; }
+.pr-lifecycle-step.merged.is-active > span { background: var(--accent-purple); }
+.pr-lifecycle-step.closed.is-active > span { background: var(--accent-red); }
 
 .pr-lifecycle-step strong {
   display: block;
-  color: #d7e6e8;
+  color: var(--text-primary);
   font-size: 10px;
   font-weight: 600;
 }
 
 .pr-lifecycle-step small {
-  color: #768d93;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -1940,7 +1936,7 @@ body {
   padding: 0 6px;
   border: 1px solid rgba(142,210,220,0.12);
   background: rgba(142,210,220,0.035);
-  color: #8fa8ae;
+  color: var(--text-muted);
   font-size: 9px;
   line-height: 1;
   white-space: nowrap;
@@ -1954,13 +1950,13 @@ body {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid rgba(142,210,220,0.075);
-  color: #657b81;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
 .pr-inline-actions a {
   flex-shrink: 0;
-  color: #8ed2dc !important;
+  color: var(--accent-blue) !important;
   text-decoration: none;
 }
 
@@ -1990,7 +1986,7 @@ body {
   align-items: center;
   gap: 6px 14px;
   min-height: 22px;
-  color: #93aab0;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -2006,7 +2002,7 @@ body {
 }
 
 .pr-summary-line b {
-  color: #61777d;
+  color: var(--text-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.10em;
@@ -2057,7 +2053,7 @@ body {
 }
 
 .pr-conversation .pr-section-title a {
-  color: #8ed2dc !important;
+  color: var(--accent-blue) !important;
   text-decoration: none;
   font-size: 9px;
   letter-spacing: 0.08em;
@@ -2068,7 +2064,7 @@ body {
   overflow: visible !important;
   padding: 0;
   white-space: pre-wrap;
-  color: #a8babf;
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.58;
 }
@@ -2098,7 +2094,7 @@ body {
 /* PR conversation v11: real GitHub-like inline thread, no duplicate lifecycle boxes. */
 .pr-detail-status {
   margin-left: auto;
-  color: #6f858b;
+  color: var(--text-muted);
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2145,10 +2141,10 @@ body {
   box-shadow: 0 0 10px rgba(142,210,220,0.18);
 }
 
-.pr-conversation-entry.body .pr-entry-marker { background: #8ed2dc; }
-.pr-conversation-entry.review .pr-entry-marker { background: #a7b6d9; }
-.pr-conversation-entry.commit .pr-entry-marker { background: #89c9a5; }
-.pr-conversation-entry.event .pr-entry-marker { background: #748b91; }
+.pr-conversation-entry.body .pr-entry-marker { background: var(--accent-blue); }
+.pr-conversation-entry.review .pr-entry-marker { background: var(--accent-purple); }
+.pr-conversation-entry.commit .pr-entry-marker { background: var(--accent-green); }
+.pr-conversation-entry.event .pr-entry-marker { background: var(--text-muted); }
 
 .pr-entry-main {
   min-width: 0;
@@ -2159,29 +2155,29 @@ body {
   align-items: baseline;
   gap: 7px;
   min-height: 21px;
-  color: #789097;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
 .pr-entry-header strong {
-  color: #dce8ea;
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 600;
 }
 
 .pr-entry-header span {
-  color: #8aa1a7;
+  color: var(--text-muted);
 }
 
 .pr-entry-header time {
-  color: #637980;
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 9px;
 }
 
 .pr-entry-header a {
   margin-left: auto;
-  color: #8ed2dc !important;
+  color: var(--accent-blue) !important;
   text-decoration: none;
 }
 
@@ -2195,7 +2191,7 @@ body {
 .pr-conversation-entry.commit .pr-body-text,
 .pr-conversation-entry.event .pr-body-text {
   margin-top: 2px;
-  color: #8ea6ac;
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10px;
 }
@@ -2228,7 +2224,7 @@ body {
 }
 
 .issue-row.is-expanded {
-  background: linear-gradient(90deg, rgba(142,210,220,0.052), var(--surface-selected) 46%, var(--surface-1));
+  background: var(--surface-secondary);
 }
 
 .issue-row-main {
@@ -2253,7 +2249,7 @@ body {
 }
 
 .issue-number {
-  color: #7d969c;
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -2263,7 +2259,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #dfebed;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 540;
 }
@@ -2272,7 +2268,7 @@ body {
 .issue-comments,
 .issue-time,
 .issue-chevron {
-  color: #748b91;
+  color: var(--text-muted);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -2305,7 +2301,7 @@ body {
   border: 1px solid rgba(142,210,220,0.12);
   background: transparent;
   border-radius: 0;
-  color: #8fa8ae;
+  color: var(--text-muted);
   font-size: 9px;
   line-height: 1;
   white-space: nowrap;
