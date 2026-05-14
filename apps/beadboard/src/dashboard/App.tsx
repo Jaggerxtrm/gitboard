@@ -174,7 +174,7 @@ export function App() {
   const filteredIssues = useMemo(() => filterIssues(issues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [issues, showOpenOnly, issueSearch, quickFilter]);
   const filteredClosedIssues = useMemo(() => filterIssues(closedIssues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [closedIssues, showOpenOnly, issueSearch, quickFilter]);
   const triage = useMemo(() => buildTriageView(issues, closedIssues), [closedIssues, issues]);
-  const segmentCounts = useMemo(() => ({ feed: filteredIssues.length, board: filteredIssues.length, triage: triage.topPicks.length, closed: filteredClosedIssues.length, memories: memories.length }), [filteredClosedIssues.length, filteredIssues.length, memories.length, triage.topPicks.length]);
+  const segmentCounts = useMemo(() => ({ issues: filteredIssues.length, board: filteredIssues.length, triage: triage.topPicks.length, closed: filteredClosedIssues.length, memories: memories.length }), [filteredClosedIssues.length, filteredIssues.length, memories.length, triage.topPicks.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
