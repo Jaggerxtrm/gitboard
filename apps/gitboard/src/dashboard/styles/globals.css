@@ -1817,7 +1817,11 @@ body {
 }
 
 .pr-expanded-body {
-  padding: 0 14px 14px;
+  border: var(--card-border);
+  border-radius: var(--card-radius-md);
+  background: var(--surface-secondary);
+  padding: 16px 18px 18px;
+  margin: 6px 4px 12px;
 }
 
 .pr-expanded-grid {
@@ -1966,9 +1970,13 @@ body {
   .pr-expanded-grid { grid-template-columns: 1fr; }
 }
 
-/* PR expansion v10: GitHub-like inline flow, no boxed/scrolling description. */
+/* PR expansion v10: GitHub-like inline flow, framed card body. */
 .pr-expanded-body {
-  padding: 0 14px 16px;
+  border: var(--card-border);
+  border-radius: var(--card-radius-md);
+  background: var(--surface-secondary);
+  padding: 16px 18px 18px;
+  margin: 6px 4px 12px;
 }
 
 .pr-section {
@@ -2510,9 +2518,12 @@ body {
 .issue-expanded-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 12px 12px;
-  border-top: 1px solid rgba(142,210,220,0.07);
+  gap: 8px;
+  border: var(--card-border);
+  border-radius: var(--card-radius-md);
+  background: var(--surface-secondary);
+  padding: 14px 16px 16px;
+  margin: 6px 4px 12px;
 }
 
 .issue-label-chip {
