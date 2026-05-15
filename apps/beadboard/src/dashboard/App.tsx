@@ -4,7 +4,7 @@ import { IssueFeed, IssueRow, countDependencies } from "./components/beads/Issue
 import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
 import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRail.tsx";
 import { useBeadsStore } from "./stores/beads.ts";
-import { api } from "./lib/api.ts";
+import { api, type OpenPr } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
 
 type Tab = "issues" | "board" | "closed" | "memories" | "triage";
@@ -27,6 +27,7 @@ export function App() {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [selectedIssueDetail, setSelectedIssueDetail] = useState<BeadIssueDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
+  const [openPrs, setOpenPrs] = useState<OpenPr[]>([]);
   const [statsByProject, setStatsByProject] = useState<Record<string, ProjectRailStats | undefined>>({});
   const [loadingProjectStats, setLoadingProjectStats] = useState(false);
   const [showOpenOnly, setShowOpenOnly] = useState(false);
@@ -68,6 +69,12 @@ export function App() {
       }
     }
     loadProjects();
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    api.getOpenPrs().then((prs) => { if (alive) setOpenPrs(prs); }).catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   const loadProjectData = useCallback(async (projectId: string) => {
@@ -174,6 +181,25 @@ export function App() {
   const filteredIssues = useMemo(() => filterIssues(issues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [issues, showOpenOnly, issueSearch, quickFilter]);
   const filteredClosedIssues = useMemo(() => filterIssues(closedIssues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [closedIssues, showOpenOnly, issueSearch, quickFilter]);
   const triage = useMemo(() => buildTriageView(issues, closedIssues), [closedIssues, issues]);
+  const prByIssueId = useMemo(() => {
+    const map = new Map<string, OpenPr>();
+    if (openPrs.length === 0 || issues.length === 0) return map;
+    for (const pr of openPrs) {
+      const text = `${pr.title} ${pr.body ?? ""}`;
+      for (const issue of issues) {
+        if (!issue.id) continue;
+        // Match id as a whole token; allow id with dots (epic children)
+        const re = new RegExp(`(?:^|[^a-zA-Z0-9-])${issue.id.replace(/[.]/g, "\\.")}(?![a-zA-Z0-9-])`);
+        if (re.test(text)) {
+          const existing = map.get(issue.id);
+          if (!existing || (pr.updated_at ?? "") > (existing.updated_at ?? "")) {
+            map.set(issue.id, pr);
+          }
+        }
+      }
+    }
+    return map;
+  }, [openPrs, issues]);
   const segmentCounts = useMemo(() => ({ issues: filteredIssues.length, board: filteredIssues.length, triage: triage.topPicks.length, closed: filteredClosedIssues.length, memories: memories.length }), [filteredClosedIssues.length, filteredIssues.length, memories.length, triage.topPicks.length]);
 
   return (
@@ -237,12 +263,14 @@ export function App() {
               onIssueSelect={handleIssueSelect}
               getAgent={getAgentForIssue}
               projectId={selectedProjectId}
+              prByIssueId={prByIssueId}
             />
           )}
-          {activeTab === "board" && <KanbanBoard issues={filteredIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
+          {activeTab === "board" && <KanbanBoard issues={filteredIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} prByIssueId={prByIssueId} />}
           {activeTab === "triage" && (
             <TriagePanel
               triage={triage}
+              prByIssueId={prByIssueId}
               issues={issues}
               selectedIssueId={selectedIssueId}
               selectedIssueDetail={selectedIssueDetail}
@@ -377,9 +405,10 @@ interface TriagePanelProps {
   onIssueSelect: (issue: BeadIssue) => void;
   getAgent: (id: string) => string | null;
   projectId: string | null;
+  prByIssueId?: Map<string, OpenPr>;
 }
 
-function TriagePanel({ triage, issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId }: TriagePanelProps) {
+function TriagePanel({ triage, issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId, prByIssueId }: TriagePanelProps) {
   const issueById = useMemo(() => new Map(issues.map((i) => [i.id, i])), [issues]);
 
   const renderRow = (issue: TriageIssue) => {
@@ -398,6 +427,7 @@ function TriagePanel({ triage, issues, selectedIssueId, selectedIssueDetail, loa
         onClick={() => onIssueSelect(full)}
         projectId={projectId}
         issueById={issueById}
+        prLink={prByIssueId?.get(issue.id) ?? null}
       />
     );
   };

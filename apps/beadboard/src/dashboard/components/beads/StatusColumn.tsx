@@ -4,6 +4,7 @@
 
 import { AlertIcon, CheckCircleIcon, CircleIcon, DotFillIcon, PlayIcon } from "@primer/octicons-react";
 import type { BeadIssue } from "../../../types/beads.ts";
+import type { OpenPr } from "../../lib/api.ts";
 import { BeadCard } from "./BeadCard";
 
 interface StatusColumnProps {
@@ -14,6 +15,7 @@ interface StatusColumnProps {
   selectedId: string | null;
   onSelect: (issue: BeadIssue) => void;
   getAgent?: (issueId: string) => string | null;
+  prByIssueId?: Map<string, OpenPr>;
 }
 
 const STATUS_CONFIG: Record<string, { color: string; icon: typeof CircleIcon }> = {
@@ -24,7 +26,7 @@ const STATUS_CONFIG: Record<string, { color: string; icon: typeof CircleIcon }> 
   closed: { color: "var(--status-closed)", icon: CheckCircleIcon },
 };
 
-export function StatusColumn({ title, description, status, issues, selectedId, onSelect, getAgent }: StatusColumnProps) {
+export function StatusColumn({ title, description, status, issues, selectedId, onSelect, getAgent, prByIssueId }: StatusColumnProps) {
   const config = STATUS_CONFIG[String(status)] ?? { color: "var(--text-muted)", icon: CircleIcon };
   const StatusIcon = config.icon;
   const epicCount = issues.filter((issue) => issue.issue_type === "epic").length;
@@ -54,6 +56,7 @@ export function StatusColumn({ title, description, status, issues, selectedId, o
               onClick={() => onSelect(issue)}
               agent={getAgent?.(issue.id)}
               isExpanded={selectedId === issue.id}
+              prLink={prByIssueId?.get(issue.id) ?? null}
             />
           ))
         )}

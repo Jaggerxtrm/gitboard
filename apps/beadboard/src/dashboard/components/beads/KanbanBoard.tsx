@@ -8,11 +8,14 @@ import { StatusColumn } from "./StatusColumn";
 import { IssueOverlay } from "./IssueOverlay.tsx";
 import { api } from "../../lib/api.ts";
 
+import type { OpenPr } from "../../lib/api.ts";
+
 interface KanbanBoardProps {
   issues: BeadIssue[];
   projectId: string | null;
   interactions: Interaction[];
   getAgent?: (issueId: string) => string | null;
+  prByIssueId?: Map<string, OpenPr>;
 }
 
 const COLUMNS: Array<{ status: BeadIssue["status"]; title: string; description: string }> = [
@@ -22,7 +25,7 @@ const COLUMNS: Array<{ status: BeadIssue["status"]; title: string; description: 
   { status: "closed", title: "Closed", description: "Recently completed" },
 ];
 
-export function KanbanBoard({ issues, projectId, interactions, getAgent }: KanbanBoardProps) {
+export function KanbanBoard({ issues, projectId, interactions, getAgent, prByIssueId }: KanbanBoardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<BeadIssueDetail | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -81,6 +84,7 @@ export function KanbanBoard({ issues, projectId, interactions, getAgent }: Kanba
             getAgent={getAgent}
             selectedId={selectedId}
             onSelect={openIssue}
+            prByIssueId={prByIssueId}
           />
         ))}
       </div>
