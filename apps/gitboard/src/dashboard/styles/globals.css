@@ -2096,7 +2096,7 @@ body {
 }
 
 .pr-rich-text pre.rich-code {
-  background: rgba(5, 8, 11, 0.66);
+  background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   margin: 8px 0;
@@ -2638,6 +2638,17 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Tab content wrapper (README/CHANGELOG/Reports) — same horizontal rhythm
+   as .pr-expanded-body so the centered stack lands at the same x as the
+   PR/Issue/Release expanded views. */
+.gb-tab-pane {
+  padding: 14px 14px 14px 90px;
+  background: transparent;
+}
+@media (max-width: 1100px) {
+  .gb-tab-pane { padding-left: 14px; }
 }
 
 .repo-content-state {

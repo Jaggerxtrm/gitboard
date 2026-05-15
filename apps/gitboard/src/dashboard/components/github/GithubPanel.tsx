@@ -190,13 +190,13 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
                 {activeTab === "issues" && <IssueTimeline issues={ownIssues} />}
                 {activeTab === "releases" && <ReleaseTimeline releases={ownReleases} />}
                 {parsed && activeTab === "readme" && (
-                  <div style={{ padding: "14px 18px" }}><ReadmeView owner={parsed.owner} name={parsed.name} /></div>
+                  <div className="gb-tab-pane"><ReadmeView owner={parsed.owner} name={parsed.name} /></div>
                 )}
                 {parsed && activeTab === "changelog" && (
-                  <div style={{ padding: "14px 18px" }}><ChangelogView owner={parsed.owner} name={parsed.name} /></div>
+                  <div className="gb-tab-pane"><ChangelogView owner={parsed.owner} name={parsed.name} /></div>
                 )}
                 {parsed && activeTab === "reports" && (
-                  <div style={{ padding: "14px 18px" }}><ReportsView owner={parsed.owner} name={parsed.name} /></div>
+                  <div className="gb-tab-pane"><ReportsView owner={parsed.owner} name={parsed.name} /></div>
                 )}
               </div>
             </>
