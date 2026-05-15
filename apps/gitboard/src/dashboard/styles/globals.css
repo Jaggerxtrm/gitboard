@@ -47,7 +47,8 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Thin scrollbars with pill thumbs */
@@ -1006,6 +1007,11 @@ body {
   --ww-line-soft: rgba(144, 205, 216, 0.075);
   --ww-glow: rgba(142, 210, 220, 0.18);
   --ww-glow-soft: rgba(142, 210, 220, 0.075);
+}
+
+.westworld-app,
+.westworld-app .gitboard-main {
+  min-width: 0;
 }
 
 .westworld-app .gitboard-main {
