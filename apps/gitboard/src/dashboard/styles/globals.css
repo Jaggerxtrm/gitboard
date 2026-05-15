@@ -2075,6 +2075,26 @@ body {
   line-height: 1.58;
 }
 
+.pr-rich-text h3 {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 10px 0 4px;
+}
+.pr-rich-text p { margin: 4px 0; }
+.pr-rich-text ul { margin: 4px 0; padding-left: 18px; }
+.pr-rich-text li { margin: 2px 0; }
+.pr-rich-text strong { color: var(--text-primary); font-weight: 700; }
+.pr-rich-text em { font-style: italic; }
+.pr-rich-text code {
+  background: rgba(142,210,220,0.08);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 0 4px;
+}
+
 .pr-inline-actions {
   margin-top: 12px;
   padding-top: 8px;

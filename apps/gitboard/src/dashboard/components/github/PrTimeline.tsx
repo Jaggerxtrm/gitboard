@@ -227,7 +227,7 @@ export function renderPrBodyText(value: string): ReactNode[] {
   let listItems: ReactNode[] = [];
 
   const renderInline = (line: string, key: string): ReactNode => {
-    const pattern = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)|`([^`]+)`/g;
+    const pattern = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)|`([^`]+)`|\*\*([^*\n]+)\*\*|(?<![*\w])\*([^*\n]+)\*(?!\*)/g;
     const parts: ReactNode[] = [];
     let lastIndex = 0;
     for (const match of line.matchAll(pattern)) {
@@ -237,6 +237,10 @@ export function renderPrBodyText(value: string): ReactNode[] {
         parts.push(<a key={`${key}-link-${match.index}`} href={match[2]} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{match[1]}</a>);
       } else if (match[3]) {
         parts.push(<code key={`${key}-code-${match.index}`}>{match[3]}</code>);
+      } else if (match[4]) {
+        parts.push(<strong key={`${key}-b-${match.index}`}>{match[4]}</strong>);
+      } else if (match[5]) {
+        parts.push(<em key={`${key}-i-${match.index}`}>{match[5]}</em>);
       }
       lastIndex = match.index + match[0].length;
     }

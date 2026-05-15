@@ -5,7 +5,6 @@ import type { GithubRelease } from "../../../types/github.ts";
 import {
   buildDateGroupedItems,
   formatRelativeTime,
-  truncateBody,
   type DateGroupItem,
 } from "../../lib/timeline-utils.ts";
 import { renderPrBodyText } from "./PrTimeline.tsx";
@@ -21,7 +20,6 @@ function DayHeader({ label }: { label: string }) {
 }
 
 function ReleaseExpandedBody({ release }: { release: GithubRelease }) {
-  const [showMore, setShowMore] = useState(false);
   const body = release.body?.trim();
 
   if (!body) {
@@ -37,17 +35,9 @@ function ReleaseExpandedBody({ release }: { release: GithubRelease }) {
     );
   }
 
-  const { visible, hasMore } = truncateBody(body);
-  const rendered = renderPrBodyText(showMore ? body : visible);
-
   return (
     <div className="release-expanded-body">
-      <div className="release-body-text">{rendered}</div>
-      {hasMore && !showMore && (
-        <button className="release-show-more" onClick={(e) => { e.stopPropagation(); setShowMore(true); }}>
-          show more
-        </button>
-      )}
+      <div className="pr-body-text"><div className="pr-rich-text">{renderPrBodyText(body)}</div></div>
       {release.html_url && (
         <a href={release.html_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="release-link">
           <LinkExternalIcon size={12} />
@@ -59,7 +49,6 @@ function ReleaseExpandedBody({ release }: { release: GithubRelease }) {
 }
 
 function ReleaseRow({ release, expanded, onToggle }: { release: GithubRelease; expanded: boolean; onToggle: () => void; }) {
-  const repoShort = release.repo_full_name.split("/")[1] ?? release.repo_full_name;
   const time = formatRelativeTime(release.published_at);
 
   return (
@@ -70,7 +59,7 @@ function ReleaseRow({ release, expanded, onToggle }: { release: GithubRelease; e
         </span>
         <span className="release-tag">{release.tag_name}</span>
         <span className="release-title">{release.name || release.tag_name}</span>
-        <span className="release-repo">{repoShort}</span>
+        <span className="release-repo">{release.repo_full_name}</span>
         <span className="release-actor">{release.author_login}</span>
         <span className="release-time">{time}</span>
         <span className="release-chevron" aria-hidden="true"><ChevronDownIcon size={14} /></span>
@@ -134,7 +123,7 @@ export function ReleaseTimeline({ releases }: { releases: GithubRelease[] }) {
     const items: ReleaseItem[] = buildDateGroupedItems(releases, (release) => release.published_at);
     return (
       <div>
-        {items.map((item, i) => item.kind === "header" ? <DayHeader key={item.key} label={item.label} /> : <ReleaseRow key={i} release={item.item} expanded={false} onToggle={() => {}} />)}
+        {items.map((item, i) => item.kind === "header" ? <DayHeader key={item.key} label={item.label} /> : <ReleaseRow key={i} release={item.item} expanded={true} onToggle={() => {}} />)}
       </div>
     );
   }
