@@ -82,7 +82,7 @@ export function useRepoTree(): void {
             fullName: repo.full_name,
             displayName: repo.display_name ?? repo.full_name,
             groupName: repo.group_name ?? null,
-            lastActivityAt: maxIso(repo.last_polled_at, beadsSide?.project.lastScanned ?? null),
+            lastActivityAt: maxIso(stats?.last_event_at ?? null, beadsSide?.project.lastScanned ?? null),
             openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
             githubStats,
             beadsStats,
