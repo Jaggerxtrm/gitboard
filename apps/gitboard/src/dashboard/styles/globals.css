@@ -3597,3 +3597,195 @@ body, .shell-app, .shell-main {
 
 /* Make sure sidebar header content stays visible when collapsed */
 .shell-sidebar[data-collapsed] .shell-sidebar-toggle { color: var(--text-primary); }
+
+/* ============================================================
+ * forge-ci9 visual pass: Dark Mode OLED palette + Fira typography
+ * Driven by ui-ux-pro-max --design-system recommendation.
+ * Scoped to .shell-app so legacy /gitboard/legacy view is unaffected.
+ * ============================================================ */
+
+.shell-app {
+  --gb-bg:         #000000;          /* operator: pure black */
+  --gb-surface-1:  #0a0a0a;          /* row hover, crumb bar */
+  --gb-surface-2:  #111111;          /* selected row bg */
+  --gb-surface-3:  #1a1a1a;          /* elevated cards */
+  --gb-text:       #f8fafc;          /* foreground (high contrast) */
+  --gb-text-muted: #94a3b8;          /* slate-400 */
+  --gb-text-dim:   #475569;          /* slate-500 */
+  --gb-border:     #1f1f1f;          /* hairline, low emission */
+  --gb-border-mid: #2a2a2a;          /* card border */
+  --gb-accent:     #22c55e;          /* green-500 — selected leaf, active state */
+  --gb-accent-dim: rgba(34,197,94,0.12); /* selected row tint */
+  --gb-danger:     #ef4444;
+  --gb-font-ui:    "Fira Sans", system-ui, -apple-system, sans-serif;
+  --gb-font-mono:  "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+
+  background: var(--gb-bg) !important;
+  color: var(--gb-text);
+  font-family: var(--gb-font-ui);
+}
+
+.shell-app .shell-sidebar {
+  background: var(--gb-bg) !important;
+  border-right: 1px solid var(--gb-border);
+  font-family: var(--gb-font-ui);
+}
+
+.shell-app .shell-sidebar-header {
+  border-bottom: 1px solid var(--gb-border);
+  height: 32px;
+  padding: 0 12px;
+}
+.shell-app .shell-sidebar-title {
+  color: var(--gb-text-muted);
+  font-family: var(--gb-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+}
+.shell-app .shell-sidebar-toggle {
+  color: var(--gb-text-muted);
+}
+.shell-app .shell-sidebar-toggle:hover {
+  background: var(--gb-surface-2);
+  color: var(--gb-text);
+}
+
+/* Repo rows (level 1) */
+.shell-app .shell-row {
+  height: 26px;
+  transition: background 120ms ease-out;
+}
+.shell-app .shell-row:hover {
+  background: var(--gb-surface-1);
+}
+.shell-app .shell-row:focus-visible {
+  outline: 1px solid var(--gb-accent);
+  outline-offset: -1px;
+}
+.shell-app .shell-row-repo {
+  color: var(--gb-text);
+  font-family: var(--gb-font-mono);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.shell-app .shell-repo-name {
+  color: var(--gb-text);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.shell-app .shell-chevron {
+  color: var(--gb-text-dim);
+}
+.shell-app .shell-row-repo .shell-leaf-icon {
+  color: var(--gb-text-dim);
+}
+.shell-app .shell-bead-count {
+  background: var(--gb-surface-2);
+  border-radius: 3px;
+  color: var(--gb-text-muted);
+  font-family: var(--gb-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+}
+
+/* Section rows (level 2) */
+.shell-app .shell-row-section {
+  color: var(--gb-text-muted);
+  font-family: var(--gb-font-mono);
+  font-size: 11.5px;
+}
+.shell-app .shell-row-section::before {
+  background: var(--gb-border);
+  left: 16px;
+}
+.shell-app .shell-section-name {
+  color: var(--gb-text-muted);
+  font-weight: 400;
+}
+.shell-app .shell-row-section .shell-chevron {
+  color: var(--gb-text-dim);
+}
+
+/* Leaf rows (level 3) — selected uses GREEN accent rail */
+.shell-app .shell-row-leaf {
+  color: var(--gb-text-muted);
+  font-family: var(--gb-font-mono);
+  font-size: 11.5px;
+  padding-left: 44px;
+}
+.shell-app .shell-row-leaf::before {
+  background: var(--gb-border);
+  left: 28px;
+}
+.shell-app .shell-row-leaf[data-selected] {
+  background: var(--gb-accent-dim);
+  color: var(--gb-text);
+}
+.shell-app .shell-row-leaf[data-selected]::after {
+  background: var(--gb-accent);
+  width: 2px;
+}
+.shell-app .shell-row-leaf[data-selected] .shell-leaf-icon {
+  color: var(--gb-accent);
+}
+.shell-app .shell-leaf-label {
+  font-family: var(--gb-font-mono);
+  letter-spacing: 0;
+}
+.shell-app .shell-leaf-count {
+  color: var(--gb-text-dim);
+  font-family: var(--gb-font-mono);
+  font-size: 10.5px;
+}
+.shell-app .shell-row-leaf[data-selected] .shell-leaf-count {
+  color: var(--gb-accent);
+}
+
+/* MainPane crumb bar */
+.shell-app .shell-crumb-bar {
+  background: var(--gb-bg);
+  border-bottom: 1px solid var(--gb-border);
+  color: var(--gb-text-dim);
+  font-family: var(--gb-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0;
+  padding: 12px 20px;
+}
+.shell-app .shell-crumb { color: var(--gb-text-muted); }
+.shell-app .shell-crumb-active { color: var(--gb-accent); font-weight: 500; }
+.shell-app .shell-crumb-sep { color: var(--gb-text-dim); }
+
+/* Activity dot — softer */
+.shell-app .shell-activity-dot {
+  height: 5px;
+  width: 5px;
+}
+
+/* Empty state polish */
+.shell-app .shell-main-empty {
+  padding: 64px 32px;
+}
+.shell-app .shell-main-empty-title {
+  color: var(--gb-text);
+  font-family: var(--gb-font-ui);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.shell-app .shell-main-empty-hint {
+  color: var(--gb-text-muted);
+}
+.shell-app .shell-main-empty-card-btn {
+  background: var(--gb-surface-1);
+  border: 1px solid var(--gb-border);
+  border-radius: 4px;
+  transition: border-color 120ms ease-out, background 120ms ease-out;
+}
+.shell-app .shell-main-empty-card-btn:hover {
+  background: var(--gb-surface-2);
+  border-color: var(--gb-accent);
+}
+
+/* Body bg for the shell route only */
+body:has(.shell-app) { background: #000 !important; }
