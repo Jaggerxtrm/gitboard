@@ -7,6 +7,9 @@ import {
   RepoIcon,
   SidebarExpandIcon,
   ChevronLeftIcon,
+  GitPullRequestIcon,
+  IssueOpenedIcon,
+  CircleIcon,
 } from "@primer/octicons-react";
 import {
   useShellStore,
@@ -15,6 +18,14 @@ import {
   selectSidebarCollapsed,
 } from "../../stores/shell.ts";
 import type { RepoNode } from "../../../types/shell.ts";
+
+function byRecencyDesc(a: RepoNode, b: RepoNode): number {
+  // null lastActivityAt sinks to the bottom
+  if (!a.lastActivityAt && !b.lastActivityAt) return a.displayName.localeCompare(b.displayName);
+  if (!a.lastActivityAt) return 1;
+  if (!b.lastActivityAt) return -1;
+  return b.lastActivityAt.localeCompare(a.lastActivityAt);
+}
 
 function groupRepos(repos: RepoNode[]): { name: string; repos: RepoNode[] }[] {
   const groups = new Map<string, RepoNode[]>();
@@ -28,7 +39,7 @@ function groupRepos(repos: RepoNode[]): { name: string; repos: RepoNode[] }[] {
     .sort(([a], [b]) => (a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b)))
     .map(([name, repos]) => ({
       name,
-      repos: repos.sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      repos: repos.sort(byRecencyDesc),
     }));
 }
 
@@ -82,7 +93,6 @@ export function Sidebar() {
                     <RepoRow
                       repo={r}
                       active={selection.repo === r.fullName}
-                      surface={selection.surface}
                       onSelect={() => setRepo(r.fullName)}
                     />
                   </li>
@@ -99,20 +109,15 @@ export function Sidebar() {
 function RepoRow({
   repo,
   active,
-  surface,
   onSelect,
 }: {
   repo: RepoNode;
   active: boolean;
-  surface: "github" | "beads";
   onSelect: () => void;
 }) {
-  const badge =
-    surface === "beads"
-      ? repo.openBeadsCount
-      : repo.githubStats.openPRs;
-  const badgeTitle =
-    surface === "beads" ? `${badge} open beads` : `${badge} open PRs`;
+  const prs = repo.githubStats.openPRs;
+  const issues = repo.githubStats.openIssues;
+  const beads = repo.openBeadsCount;
 
   return (
     <button
@@ -126,9 +131,26 @@ function RepoRow({
         <RepoIcon size={14} />
       </span>
       <span className="ide-repo-name">{repo.displayName}</span>
-      {badge > 0 && (
-        <span className="ide-repo-badge" title={badgeTitle}>{badge}</span>
-      )}
+      <span className="ide-repo-stats" aria-hidden="true">
+        {prs > 0 && (
+          <span className="ide-stat-chip" title={`${prs} open PRs`}>
+            <GitPullRequestIcon size={11} />
+            <span className="ide-stat-chip-num">{prs}</span>
+          </span>
+        )}
+        {issues > 0 && (
+          <span className="ide-stat-chip" title={`${issues} open issues`}>
+            <IssueOpenedIcon size={11} />
+            <span className="ide-stat-chip-num">{issues}</span>
+          </span>
+        )}
+        {beads > 0 && (
+          <span className="ide-stat-chip ide-stat-chip-beads" title={`${beads} open beads`}>
+            <CircleIcon size={10} />
+            <span className="ide-stat-chip-num">{beads}</span>
+          </span>
+        )}
+      </span>
     </button>
   );
 }

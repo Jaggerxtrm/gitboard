@@ -4269,3 +4269,26 @@ body:has(.ide-shell) { overflow: hidden; }
   min-height: 0 !important;
   overflow: hidden;
 }
+
+/* forge-dta: sidebar row stats — git status octicons + bd count */
+.ide-repo-stats {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.ide-stat-chip {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  gap: 3px;
+}
+.ide-stat-chip-num {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ide-stat-chip-beads { color: var(--accent); }
+.ide-repo-row.is-active .ide-stat-chip { color: var(--text-primary); }
+.ide-repo-row.is-active .ide-stat-chip-beads { color: var(--accent); }
