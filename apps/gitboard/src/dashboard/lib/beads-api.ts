@@ -35,6 +35,11 @@ async function jsonFetch<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Encode every path segment derived from remote data (project IDs, issue IDs)
+// to avoid client-side path/query/fragment confusion from reserved characters
+// (forge-bvq security-auditor finding).
+const enc = encodeURIComponent;
+
 export const beadsApi = {
   async listProjects(): Promise<BeadsProject[]> {
     const data = await jsonFetch<{ projects?: BeadsProject[] }>("/api/beads/projects");
@@ -52,7 +57,7 @@ export const beadsApi = {
     if (filters?.limit) params.set("limit", String(filters.limit));
     const qs = params.toString();
     const data = await jsonFetch<{ issues?: BeadIssue[] }>(
-      `/api/beads/projects/${projectId}/issues${qs ? `?${qs}` : ""}`,
+      `/api/beads/projects/${enc(projectId)}/issues${qs ? `?${qs}` : ""}`,
     );
     return data.issues ?? [];
   },
@@ -60,7 +65,7 @@ export const beadsApi = {
   async getIssue(projectId: string, issueId: string): Promise<BeadIssueDetail | null> {
     try {
       const data = await jsonFetch<{ issue?: BeadIssueDetail }>(
-        `/api/beads/projects/${projectId}/issues/${issueId}`,
+        `/api/beads/projects/${enc(projectId)}/issues/${enc(issueId)}`,
       );
       return data.issue ?? null;
     } catch {
@@ -71,29 +76,29 @@ export const beadsApi = {
   async listClosedIssues(projectId: string, limit?: number): Promise<BeadIssue[]> {
     const qs = limit ? `?limit=${limit}` : "";
     const data = await jsonFetch<{ issues?: BeadIssue[] }>(
-      `/api/beads/projects/${projectId}/issues/closed${qs}`,
+      `/api/beads/projects/${enc(projectId)}/issues/closed${qs}`,
     );
     return data.issues ?? [];
   },
 
   async listMemories(projectId: string): Promise<Memory[]> {
     const data = await jsonFetch<{ memories?: Memory[] }>(
-      `/api/beads/projects/${projectId}/memories`,
+      `/api/beads/projects/${enc(projectId)}/memories`,
     );
     return data.memories ?? [];
   },
 
   async listInteractions(projectId: string, issueId?: string): Promise<Interaction[]> {
-    const qs = issueId ? `?issue_id=${encodeURIComponent(issueId)}` : "";
+    const qs = issueId ? `?issue_id=${enc(issueId)}` : "";
     const data = await jsonFetch<{ interactions?: Interaction[] }>(
-      `/api/beads/projects/${projectId}/interactions${qs}`,
+      `/api/beads/projects/${enc(projectId)}/interactions${qs}`,
     );
     return data.interactions ?? [];
   },
 
   async getStats(projectId: string): Promise<BeadsStats> {
     const data = await jsonFetch<{ stats: BeadsStats }>(
-      `/api/beads/projects/${projectId}/stats`,
+      `/api/beads/projects/${enc(projectId)}/stats`,
     );
     return data.stats;
   },

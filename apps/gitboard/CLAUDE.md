@@ -97,12 +97,33 @@ Key conventions:
 - **`lib/`** not `api/` — renamed to avoid Vite proxy collision.
 - Icons: `@primer/octicons-react` only — no emoji, no custom SVGs.
 - Lists: `@tanstack/react-virtual` for virtualised event lists — use `measureElement` for dynamic row heights (e.g. accordion rows).
-- State: Zustand (`stores/github.ts`) — no Redux, no Context API.
+- State: Zustand (`stores/github.ts`, `stores/shell.ts`) — no Redux, no Context API.
 - CSS: CSS custom properties (`var(--*)`) only — no hardcoded hex values.
 - `lib/client.ts` — `ApiClient` class, singleton `apiClient` exported.
 - `lib/ws.ts` — `WsClient` with exponential-backoff auto-reconnect.
+- `lib/beads-api.ts` — `beadsApi` client for `/api/beads/*` (same-origin; gitboard's own server mounts beadboard routes). All path segments `encodeURIComponent`-encoded.
 
 `vite.config.ts` root is `src/dashboard/`. `server.fs.allow: ['.']` is required so Vite can serve `src/types/` (outside the dashboard root).
+
+### IDE shell (forge-5w9)
+
+The default `/gitboard` route renders a VS Code-style file-explorer shell:
+
+```
+ShellApp (App.tsx)
+├─ Sidebar (components/shell/Sidebar.tsx)       — tree of repos, expand to /github + /beads children
+└─ MainPane (components/shell/MainPane.tsx)     — swaps GithubRepoView ⇄ BeadsRepoView based on selection
+```
+
+- **Types**: `types/shell.ts` defines `RepoNode`, `SidebarSelection`, `GithubChips`, `BeadsChips`, `RepoSection`.
+- **Store**: `stores/shell.ts` (`useShellStore`) holds `repos`, `expanded`, `selection`, `sidebarCollapsed`. All three of expanded/selection/sidebarCollapsed persist to `localStorage` under `forge-5w9:*`.
+- **Data aggregator**: `hooks/useRepoTree.ts` merges `/api/github/repos` + `/api/beads/projects` (+per-project beads stats) into `RepoNode[]`. Match by tail of github `full_name` ↔ beads project `name`.
+- **Routing**: store-driven (no router lib). `/gitboard` → new shell. `/gitboard/legacy` → old TabBar shell. `/beadboard` → 302 to `/gitboard` (forge-5w9.9).
+- **Ported components**: `components/beads/{BeadCard,StatusColumn,KanbanBoard,IssueFeed,IssueOverlay,BeadsRepoView}.tsx` ported from `apps/beadboard/` with `api` → `beadsApi` rewrites.
+- **Sidebar a11y**: ARIA tree (`role=tree/treeitem`, `aria-level/expanded/selected`), full keyboard nav (Arrow/Enter/Home/End), 22px compact rows, octicon chips with zero-count hidden.
+- **Mobile**: viewports <768px switch sidebar to drawer pattern (slides from left over content).
+
+Backend dependency: `src/api/server.ts:6` imports `beadsRoutes` from `../../../beadboard/src/api/routes/beads.ts`. Beadboard backend (`apps/beadboard/src/{api,core,index.ts}`) stays alive; only the frontend is deprecated.
 
 ### Testing
 

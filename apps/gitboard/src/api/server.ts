@@ -14,7 +14,7 @@ export interface ServerOptions {
 
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
 const gitboardDist = join(repoRoot, "apps/gitboard/dist/dashboard");
-const beadboardDist = join(repoRoot, "apps/beadboard/dist/dashboard");
+// beadboardDist removed (forge-5w9.9) — frontend deprecated; /beadboard redirects to /gitboard.
 
 export function createApp(db: Database): {
   app: Hono;
@@ -54,23 +54,11 @@ export function createApp(db: Database): {
       return new Response(file, { headers: { "Content-Type": "text/html" } });
     });
 
-    // Beadboard - serve assets and SPA
-    app.get("/beadboard/assets/*", async (c) => {
-      const path = c.req.path.replace("/beadboard", "/beadboard");
-      const file = Bun.file(join(beadboardDist, path));
-      if (await file.exists()) return new Response(file, { headers: { "Content-Type": contentType(path) } });
-      return c.notFound();
-    });
-
-    app.get("/beadboard", async (c) => {
-      const file = Bun.file(join(beadboardDist, "beadboard/index.html"));
-      return new Response(file, { headers: { "Content-Type": "text/html" } });
-    });
-
-    app.get("/beadboard/*", async (c) => {
-      const file = Bun.file(join(beadboardDist, "beadboard/index.html"));
-      return new Response(file, { headers: { "Content-Type": "text/html" } });
-    });
+    // Beadboard frontend deprecated (forge-5w9.9) — unified into gitboard's IDE shell.
+    // /beadboard and /beadboard/* now redirect to gitboard. Backend routes at
+    // /api/beads/* still come from beadboard's source via beadsRoutes above.
+    app.get("/beadboard", (c) => c.redirect("/gitboard"));
+    app.get("/beadboard/*", (c) => c.redirect("/gitboard"));
 
     // Root redirects to gitboard
     app.get("/", (c) => c.redirect("/gitboard"));
