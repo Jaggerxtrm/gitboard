@@ -3,6 +3,7 @@ import { LinkExternalIcon } from "@primer/octicons-react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 // forge-5w9.1 placeholder — selection type will drive MainPane swap in 5w9.6.
 import type { SidebarSelection } from "../types/shell.ts";
+import { useRepoTree } from "./hooks/useRepoTree.ts";
 
 type Tab = SidebarSelection["section"];
 type View = "dashboard" | "design-preview";
@@ -25,6 +26,7 @@ export function App() {
 function DashboardShell({ view }: { view: View }) {
   const [activeTab, setActiveTab] = useState<Tab>("github");
   const isPreview = view === "design-preview";
+  useRepoTree(); // forge-5w9.3 — aggregates github + beads into shell store
 
   return (
     <div className={isPreview ? "westworld-app design-preview-container" : "westworld-app"} style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
