@@ -63,14 +63,17 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           }
           return;
         }
-        const [issues, closed, memories, interactions] = await Promise.all([
-          beadsApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review"] }).catch(() => [] as BeadIssue[]),
-          beadsApi.listClosedIssues(project.id, 50).catch(() => [] as BeadIssue[]),
+        // Single fetch — backend /issues/closed returns 404 on Dolt-backed projects.
+        // The unfiltered /issues endpoint returns everything (open + closed) from Dolt.
+        const [allIssues, memories, interactions] = await Promise.all([
+          beadsApi.listIssues(project.id, { limit: 1000 }).catch(() => [] as BeadIssue[]),
           beadsApi.listMemories(project.id).catch(() => [] as Memory[]),
           beadsApi.listInteractions(project.id).catch(() => [] as Interaction[]),
         ]);
         if (cancelled) return;
-        setState({ loading: false, error: null, project, issues, closedIssues: closed, memories, interactions });
+        const issues = allIssues.filter((i) => i.status !== "closed");
+        const closedIssues = allIssues.filter((i) => i.status === "closed");
+        setState({ loading: false, error: null, project, issues, closedIssues, memories, interactions });
       } catch (err) {
         if (!cancelled) {
           setState({ ...INITIAL, loading: false, error: err instanceof Error ? err.message : String(err) });
@@ -118,7 +121,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
       )}
       {tab === "feed" && (
         <IssueFeed
-          issues={state.issues}
+          issues={[...state.issues, ...state.closedIssues]}
           selectedIssueId={selectedId}
           selectedIssueDetail={detail}
           loadingDetailId={loadingDetailId}

@@ -1,12 +1,12 @@
 // MainPane (forge-7xu). Renders the (surface, tab) view for the selected repo.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useShellStore,
   selectRepos,
   selectSelection,
 } from "../../stores/shell.ts";
-import { useGithubStore } from "../../stores/github.ts";
+import { apiClient } from "../../lib/client.ts";
 import { ActivityTimeline } from "../github/ActivityTimeline.tsx";
 import { PrTimeline } from "../github/PrTimeline.tsx";
 import { IssueTimeline } from "../github/IssueTimeline.tsx";
@@ -14,6 +14,12 @@ import { ReleaseTimeline } from "../github/ReleaseTimeline.tsx";
 import { ReadmeView, ChangelogView, ReportsView } from "../github/RepoContentPanels.tsx";
 import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
 import type { BeadsTab, GithubTab, RepoNode } from "../../../types/shell.ts";
+import type {
+  GithubEvent,
+  GithubPr,
+  GithubIssue,
+  GithubRelease,
+} from "../../../types/github.ts";
 
 export function MainPane() {
   const selection = useShellStore(selectSelection);
@@ -35,45 +41,79 @@ export function MainPane() {
   return <BeadsRepoView repo={repo} tab={selection.tab as BeadsTab} />;
 }
 
+// Per-repo data loader. Fetches Activity/PRs/Issues/Releases scoped to repo
+// (fixes the legacy global-pagination bug where global endpoints return only
+// the most-recent 50/100 across ALL repos).
+interface GithubRepoData {
+  loading: boolean;
+  error: string | null;
+  events: GithubEvent[];
+  prs: GithubPr[];
+  issues: GithubIssue[];
+  releases: GithubRelease[];
+}
+
+function useGithubRepoData(fullName: string): GithubRepoData {
+  const [state, setState] = useState<GithubRepoData>({
+    loading: true, error: null,
+    events: [], prs: [], issues: [], releases: [],
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((s) => ({ ...s, loading: true, error: null }));
+
+    Promise.all([
+      apiClient.getEvents({ repos: [fullName], limit: 200 }).catch(() => ({ data: [] as GithubEvent[] })),
+      apiClient.getPrs({ repo: fullName, limit: 200 }).catch(() => ({ data: [] as GithubPr[] })),
+      apiClient.getIssues({ repo: fullName, limit: 200 }).catch(() => ({ data: [] as GithubIssue[] })),
+      apiClient.getReleases({ repo: fullName, limit: 50 }).catch(() => ({ releases: [] as GithubRelease[] })),
+    ]).then(([ev, pr, is, rel]) => {
+      if (cancelled) return;
+      setState({
+        loading: false, error: null,
+        events: ev.data ?? [],
+        prs: pr.data ?? [],
+        issues: is.data ?? [],
+        releases: rel.releases ?? [],
+      });
+    }).catch((err) => {
+      if (cancelled) return;
+      setState((s) => ({ ...s, loading: false, error: err instanceof Error ? err.message : String(err) }));
+    });
+
+    return () => { cancelled = true; };
+  }, [fullName]);
+
+  return state;
+}
+
 function GithubTabView({ repo, tab }: { repo: RepoNode; tab: GithubTab }) {
-  const events = useGithubStore((s) => s.events);
-  const prs = useGithubStore((s) => s.prs);
-  const issues = useGithubStore((s) => s.issues);
-  const releases = useGithubStore((s) => s.releases);
-  const loading = useGithubStore((s) => s.loading);
-  const error = useGithubStore((s) => s.error);
-
-  const filtered = useMemo(() => ({
-    events: events.filter((e) => e.repo === repo.fullName),
-    prs: prs.filter((p) => p.repo === repo.fullName),
-    issues: issues.filter((i) => i.repo === repo.fullName),
-    releases: releases.filter((r) => r.repo_full_name === repo.fullName),
-  }), [events, prs, issues, releases, repo.fullName]);
-
+  const data = useGithubRepoData(repo.fullName);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-  if (error) return <p className="ide-error-msg">{error}</p>;
-  if (loading && events.length === 0) return <p className="ide-loading">Loading…</p>;
+  if (data.error) return <p className="ide-error-msg">{data.error}</p>;
+  if (data.loading) return <p className="ide-loading">Loading {tab}…</p>;
 
   const owner = repo.fullName.includes("/") ? repo.fullName.split("/")[0] : "";
   const name = repo.fullName.includes("/") ? repo.fullName.split("/")[1] : repo.fullName;
 
   switch (tab) {
     case "activity":
-      return filtered.events.length > 0
-        ? <ActivityTimeline events={filtered.events} selectedId={selectedEventId} onSelect={(e) => setSelectedEventId(e.id)} />
+      return data.events.length > 0
+        ? <ActivityTimeline events={data.events} selectedId={selectedEventId} onSelect={(e) => setSelectedEventId(e.id)} />
         : <Empty>No activity for {repo.displayName}.</Empty>;
     case "prs":
-      return filtered.prs.length > 0
-        ? <PrTimeline prs={filtered.prs} />
+      return data.prs.length > 0
+        ? <PrTimeline prs={data.prs} />
         : <Empty>No pull requests for {repo.displayName}.</Empty>;
     case "issues":
-      return filtered.issues.length > 0
-        ? <IssueTimeline issues={filtered.issues} />
+      return data.issues.length > 0
+        ? <IssueTimeline issues={data.issues} />
         : <Empty>No issues for {repo.displayName}.</Empty>;
     case "releases":
-      return filtered.releases.length > 0
-        ? <ReleaseTimeline releases={filtered.releases} />
+      return data.releases.length > 0
+        ? <ReleaseTimeline releases={data.releases} />
         : <Empty>No releases for {repo.displayName}.</Empty>;
     case "readme":
       return <ReadmeView owner={owner} name={name} />;
