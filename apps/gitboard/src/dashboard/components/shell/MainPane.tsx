@@ -31,14 +31,29 @@ export function MainPane() {
     [selection.repo, repos],
   );
 
-  if (!repo) return <EmptyState repos={repos} onPick={setRepo} surface={selection.surface} />;
-
-  if (selection.surface === "github") {
-    if (!repo.hasGithub) return <NoSide side="github" repo={repo.displayName} />;
-    return <GithubTabView repo={repo} tab={selection.tab as GithubTab} />;
+  let inner: React.ReactNode;
+  if (!repo) {
+    inner = <EmptyState repos={repos} onPick={setRepo} surface={selection.surface} />;
+  } else if (selection.surface === "github") {
+    inner = repo.hasGithub
+      ? <GithubTabView repo={repo} tab={selection.tab as GithubTab} />
+      : <NoSide side="github" repo={repo.displayName} />;
+  } else {
+    inner = repo.hasBeads
+      ? <BeadsRepoView repo={repo} tab={selection.tab as BeadsTab} />
+      : <NoSide side="beads" repo={repo.displayName} />;
   }
-  if (!repo.hasBeads) return <NoSide side="beads" repo={repo.displayName} />;
-  return <BeadsRepoView repo={repo} tab={selection.tab as BeadsTab} />;
+
+  // Single sized wrapper — virtualized timelines need a parent with definite height
+  // and a fresh key per (surface, tab, repo) so internal state doesn't bleed across swaps.
+  return (
+    <main
+      className="ide-main"
+      key={`${selection.surface}:${selection.tab}:${selection.repo ?? ""}`}
+    >
+      {inner}
+    </main>
+  );
 }
 
 // Per-repo data loader. Fetches Activity/PRs/Issues/Releases scoped to repo

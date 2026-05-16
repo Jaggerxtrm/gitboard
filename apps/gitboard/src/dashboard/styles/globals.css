@@ -4244,3 +4244,28 @@ body:has(.shell-app) { background: #000 !important; }
 @media (prefers-reduced-motion: reduce) {
   .ide-skeleton-head, .ide-skeleton-card { animation: none; }
 }
+
+/* forge-qc0: MainPane wrapper must give virtualized timelines a sized parent. */
+.ide-main {
+  background: #000;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.ide-main > * { flex: 1; min-height: 0; min-width: 0; }
+.ide-main > .ide-empty,
+.ide-main > .ide-empty-msg,
+.ide-main > .ide-error,
+.ide-main > .ide-loading { flex: 0 0 auto; overflow: auto; }
+
+/* forge-qc0: lock .ide-shell to viewport so virtualized timelines get a fixed parent. */
+html, body, #root { height: 100%; }
+body:has(.ide-shell) { overflow: hidden; }
+.ide-shell {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow: hidden;
+}
