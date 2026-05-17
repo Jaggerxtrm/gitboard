@@ -6,6 +6,7 @@ import { createGithubRouter } from "./routes/github.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
+import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -13,6 +14,7 @@ export interface ServerOptions {
 }
 
 let currentRegistry: ChannelRegistry | null = null;
+let currentWatcher: BeadsChangeWatcher | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
@@ -31,6 +33,8 @@ export function createApp(db: Database): {
   const registry = new ChannelRegistry();
   currentRegistry = registry;
   const wsHandler = new WsHandler(registry);
+  currentWatcher = new BeadsChangeWatcher({ registry });
+  currentWatcher.start();
 
   app.use("*", cors());
 

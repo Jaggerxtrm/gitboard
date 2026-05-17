@@ -72,8 +72,11 @@ export type BeadsCommentAppend = Interaction;
 export type BeadsBatch = {
   project_id: string;
   issues?: BeadIssue[];
-  memories?: Memory[];
   dependencies?: BeadDependency[];
+  memories?: Memory[];
+  kv?: Array<{ key: string; value: unknown; project_id: string }>;
+  closes?: string[];
+  deletes?: string[];
 };
 export type BeadsSyncHint = { reason: string; project_id?: string; since_seq?: number };
 export type BeadsSourceHealth = { project: BeadsProject; health: ProjectSourceHealth[] };
