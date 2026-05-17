@@ -1,7 +1,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import type { ChannelRegistry } from "../../../gitboard/src/api/ws/channels.ts";
-import type { BeadDependency, BeadIssue, BeadsProject, Memory, ProjectSourceHealth } from "../types/beads.ts";
+import type { BeadDependency, BeadIssue, BeadsProject, Memory } from "../types/beads.ts";
 import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
@@ -61,9 +61,9 @@ export class BeadsChangeWatcher {
     const commitHash = await this.getCommitHash(project);
     const snapshot = await this.readSnapshot(project);
     const previous = this.previous.get(project.id);
-    const health = this.buildHealth(project, commitHash, previous, snapshot);
+    const drift = Boolean(previous && previous.issues.length !== snapshot.issues.length);
     this.previous.set(project.id, snapshot);
-    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { health } });
+    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { projectId: project.id, source: commitHash ? "dolt" : "jsonl", drift, healthy: Boolean(commitHash) } });
     this.diffAndQueue(project.id, previous, snapshot, commitHash ?? String(Date.now()));
   }
 
@@ -87,7 +87,6 @@ export class BeadsChangeWatcher {
   }
 
   private diffList<T extends Record<string, unknown>>(projectId: string, previous: T[], next: T[], version: string, upsertEvent: string, deleteEvent: string, key: keyof T): void {
-    const prev = new Map(previous.map((item) => [String(item[key]), item]));
     const nextIds = new Set(next.map((item) => String(item[key])));
     for (const item of next) this.enqueue({ projectId, source: "dolt", version, event: upsertEvent, data: { [key]: item[key], ...item } });
     for (const item of previous) if (!nextIds.has(String(item[key]))) this.enqueue({ projectId, source: "dolt", version, event: deleteEvent, data: { [key]: item[key] } });
@@ -120,7 +119,14 @@ export class BeadsChangeWatcher {
   }
 
   private async readIssues(project: BeadsProject): Promise<BeadIssue[]> {
-    try { if (project.doltPort) return await new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }).getIssues({ limit: 1000 }); } catch {}
+    const client = project.doltPort ? new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }) : null;
+    if (client && !client.isBreakerOpen()) {
+      try {
+        return await client.getIssues({ limit: 1000 });
+      } catch {
+        // fall through to JSONL
+      }
+    }
     try { return (await Bun.file(join(project.beadsPath, "issues.jsonl")).text()).split("\n").flatMap((line) => BeadsReader.parseIssueLine(line)).map((issue) => ({ ...issue, project_id: project.id })); } catch { return []; }
   }
 
@@ -133,7 +139,4 @@ export class BeadsChangeWatcher {
     try { const client = new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }); await client.connect(); return await client.getCommitHash(); } catch { return null; }
   }
 
-  private buildHealth(project: BeadsProject, commitHash: string | null, previous?: Snapshot, next?: Snapshot): ProjectSourceHealth[] {
-    return [{ kind: "dolt", state: commitHash ? "available" : "missing", detail: commitHash ?? "fallback" }, { kind: "jsonl", state: "available", path: join(project.beadsPath, "issues.jsonl"), detail: previous && next && previous.issues.length !== next.issues.length ? "drift" : undefined }];
-  }
 }

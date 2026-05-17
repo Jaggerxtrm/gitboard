@@ -79,4 +79,10 @@ export type BeadsBatch = {
   deletes?: string[];
 };
 export type BeadsSyncHint = { reason: string; project_id?: string; since_seq?: number };
-export type BeadsSourceHealth = { project: BeadsProject; health: ProjectSourceHealth[] };
+export type BeadsSourceHealth = {
+  projectId: string;
+  source: ProjectSourceHealth["kind"];
+  drift: boolean;
+  healthy?: boolean;
+  scope?: string;
+};

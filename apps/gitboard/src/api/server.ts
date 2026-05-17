@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
 import { createGithubRouter } from "./routes/github.ts";
+import { createInternalDoltHealthRouter } from "./routes/internal-dolt-health.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
@@ -44,6 +45,7 @@ export function createApp(db: Database): {
   // API routes
   app.route("/api/github", createGithubRouter(db, registry));
   app.route("/api/beads", beadsRoutes);
+  app.route("/api/internal", createInternalDoltHealthRouter());
 
   // Serve built dashboards in production
   if (process.env.NODE_ENV === "production") {
