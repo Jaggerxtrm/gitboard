@@ -126,9 +126,7 @@ export class DoltClient {
 
   async getIssues(filters: IssueFilters = {}): Promise<BeadIssue[]> {
     const rows = await this.selectIssues(filters);
-    const issues: BeadIssue[] = [];
-    for (const row of rows) issues.push(await this.toIssue(row));
-    return issues;
+    return this.hydrateIssues(rows);
   }
 
   async getCommitHash(): Promise<string> {
@@ -166,9 +164,7 @@ export class DoltClient {
       `SELECT * FROM issues WHERE status = 'closed' AND closed_at IS NOT NULL ORDER BY closed_at DESC LIMIT ?`,
       [limit],
     );
-    const issues: BeadIssue[] = [];
-    for (const row of rows) issues.push(await this.toIssue(row));
-    return issues;
+    return this.hydrateIssues(rows);
   }
 
   async getStats(): Promise<{ total: number; open: number; in_progress: number; blocked: number; closed: number }> {
@@ -318,6 +314,32 @@ export class DoltClient {
   }
 
   private async toIssue(row: RowDataPacket): Promise<BeadIssue> {
+    const id = String(row.id);
+    const [deps, related, labels] = await Promise.all([
+      this.getDependencies(id),
+      this.getRelatedIds(id),
+      this.getLabels(id),
+    ]);
+    return this.assembleIssue(row, deps, related, labels);
+  }
+
+  // Batched hydration: 1 SELECT issues + 3 IN-clause fan-out queries = 4 total,
+  // replacing the prior 1 + (3 * rows.length) N+1 pattern.
+  private async hydrateIssues(rows: RowDataPacket[]): Promise<BeadIssue[]> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((row) => String(row.id));
+    const [depsByOwner, relatedByOwner, labelsByOwner] = await Promise.all([
+      this.getDependenciesByIssueIds(ids),
+      this.getRelatedIdsByIssueIds(ids),
+      this.getLabelsByIssueIds(ids),
+    ]);
+    return rows.map((row) => {
+      const id = String(row.id);
+      return this.assembleIssue(row, depsByOwner.get(id) ?? [], relatedByOwner.get(id) ?? [], labelsByOwner.get(id) ?? []);
+    });
+  }
+
+  private assembleIssue(row: RowDataPacket, deps: BeadDependency[], related: string[], labels: string[]): BeadIssue {
     return {
       id: String(row.id),
       title: String(row.title ?? ""),
@@ -333,11 +355,78 @@ export class DoltClient {
       closed_at: row.closed_at ?? undefined,
       close_reason: row.close_reason ?? undefined,
       project_id: "",
-      dependencies: await this.getDependencies(String(row.id)),
+      dependencies: deps,
       parent_id: row.parent_id ?? undefined,
-      related_ids: await this.getRelatedIds(String(row.id)),
-      labels: await this.getLabels(String(row.id)),
+      related_ids: related,
+      labels: labels,
     };
+  }
+
+  private async getDependenciesByIssueIds(ids: string[]): Promise<Map<string, BeadDependency[]>> {
+    const map = new Map<string, BeadDependency[]>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => "?").join(",");
+    const [rows] = await this.execute<RowDataPacket[]>(
+      `SELECT d.issue_id AS owner_id, d.depends_on_id AS id, d.type AS dependency_type, i.title, i.status
+       FROM dependencies d JOIN issues i ON d.depends_on_id = i.id
+       WHERE d.issue_id IN (${placeholders})`,
+      ids,
+    );
+    for (const row of rows as RowDataPacket[]) {
+      const ownerId = String(row.owner_id);
+      if (!map.has(ownerId)) map.set(ownerId, []);
+      map.get(ownerId)!.push({
+        id: String(row.id),
+        title: String(row.title ?? ""),
+        status: String(row.status ?? "open") as BeadDependency["status"],
+        dependency_type: String(row.dependency_type ?? "blocks") as BeadDependency["dependency_type"],
+      });
+    }
+    return map;
+  }
+
+  private async getRelatedIdsByIssueIds(ids: string[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => "?").join(",");
+    try {
+      const [rows] = await this.execute<RowDataPacket[]>(
+        `SELECT issue_id, related_issue_id FROM issue_related WHERE issue_id IN (${placeholders})`,
+        ids,
+      );
+      for (const row of rows as RowDataPacket[]) {
+        const ownerId = String(row.issue_id);
+        const value = String(row.related_issue_id);
+        if (!value) continue;
+        if (!map.has(ownerId)) map.set(ownerId, []);
+        map.get(ownerId)!.push(value);
+      }
+    } catch {
+      // issue_related is optional; swallow as in the single-issue path
+    }
+    return map;
+  }
+
+  private async getLabelsByIssueIds(ids: string[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => "?").join(",");
+    try {
+      const [rows] = await this.execute<RowDataPacket[]>(
+        `SELECT issue_id, label FROM labels WHERE issue_id IN (${placeholders})`,
+        ids,
+      );
+      for (const row of rows as RowDataPacket[]) {
+        const ownerId = String(row.issue_id);
+        const value = String(row.label);
+        if (!value) continue;
+        if (!map.has(ownerId)) map.set(ownerId, []);
+        map.get(ownerId)!.push(value);
+      }
+    } catch {
+      // labels is optional
+    }
+    return map;
   }
 
   private async getDependencies(issueId: string): Promise<BeadDependency[]> {

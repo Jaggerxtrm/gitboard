@@ -21,6 +21,7 @@ export class BeadsChangeWatcher {
   private stopped = false;
   private watchers = new Map<string, FSWatcher>();
   private previous = new Map<string, Snapshot>();
+  private lastCommitHash = new Map<string, string>();
   private queue: PendingEvent[] = [];
 
   constructor(private readonly options: { scanner?: ProjectScanner; registry: ChannelRegistry }) {}
@@ -59,10 +60,30 @@ export class BeadsChangeWatcher {
 
   private async poll(project: BeadsProject): Promise<void> {
     const commitHash = await this.getCommitHash(project);
+    const prevHash = this.lastCommitHash.get(project.id);
+    const haveSnapshot = this.previous.has(project.id);
+
+    // Fast path: commit hash unchanged AND we already have a snapshot →
+    // nothing diffed since last tick. Emit health and skip the expensive
+    // readSnapshot (which would otherwise SELECT up to 1000 rows + 3 batched
+    // IN-clause hydration queries per project per 2s on a stable repo).
+    if (commitHash && prevHash === commitHash && haveSnapshot) {
+      this.enqueue({
+        projectId: project.id,
+        source: "dolt",
+        version: commitHash,
+        event: "beads:source_health",
+        data: { projectId: project.id, source: "dolt", drift: false, healthy: true },
+      });
+      return;
+    }
+
     const snapshot = await this.readSnapshot(project);
     const previous = this.previous.get(project.id);
     const drift = Boolean(previous && previous.issues.length !== snapshot.issues.length);
     this.previous.set(project.id, snapshot);
+    if (commitHash) this.lastCommitHash.set(project.id, commitHash);
+    else this.lastCommitHash.delete(project.id);
     this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { projectId: project.id, source: commitHash ? "dolt" : "jsonl", drift, healthy: Boolean(commitHash) } });
     this.diffAndQueue(project.id, previous, snapshot, commitHash ?? String(Date.now()));
   }
