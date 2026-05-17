@@ -1,8 +1,12 @@
 {
   "schemaVersion": "1",
   "enabledPacks": {
-    "claude": [],
-    "pi": []
+    "claude": [
+      "ui-ux"
+    ],
+    "pi": [
+      "ui-ux"
+    ]
   }
 }
 

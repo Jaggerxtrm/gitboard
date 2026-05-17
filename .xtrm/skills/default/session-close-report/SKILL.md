@@ -41,6 +41,52 @@ are factually superseded.
 
 ## Workflow
 
+### 0. Cleanup before reporting (MANDATORY)
+
+A report on a dirty session is misleading. Before selecting or generating any
+report, verify and clean up everything this session opened. The report must
+reflect a clean terminal state.
+
+```bash
+# 0a. Worktrees opened during the session
+git worktree list                  # any feature/fix/chore worktrees still here?
+# Remove every worktree this session created (or that a stopped specialist left):
+git worktree remove <path>         # for each stale entry
+git branch -D <branch>             # only after confirming merged or abandoned
+git worktree prune                 # drop stale metadata
+
+# 0b. Specialist jobs still running or waiting
+sp ps                              # MUST be empty (or only intentionally kept-alive jobs)
+sp stop <job-id>                   # for any leftover running/waiting job
+# After every sp stop, re-check sp ps and git worktree list — sp stop should
+# clean its worktree, but verify.
+
+# 0c. Stale background processes from the session
+ps -ef | grep -E '(serena|gitnexus|specialists|sp-serve|sp-script|pi[ -]|claude)' | grep -v grep
+# Kill anything you launched that is still running and no longer needed.
+# Be especially careful with:
+#   - serena MCP servers (often leak when an MCP host crashes)
+#   - gitnexus index processes (`npx gitnexus analyze` can outlive its terminal)
+#   - sp-serve / sp-script tmux sessions
+#   - orphaned `pi` or `claude` processes from interactive sessions
+
+tmux ls 2>/dev/null                # any sp-* or xt-* tmux sessions left?
+tmux kill-session -t <name>        # for each stale session
+
+# 0d. Tmp dirs the session created (only if large or sensitive)
+ls -la /tmp/sp-serve-* /tmp/sp-script-* 2>/dev/null
+```
+
+Do not skip any sub-step. If a process refuses to stop cleanly, document it in
+the **Problems Encountered** section of the report so the next agent knows.
+
+A clean session ends with:
+- `git worktree list` showing only the main worktree (plus any intentional ones)
+- `sp ps` showing 0 jobs (or only intentional keep-alive)
+- no leaked `serena` / `gitnexus` / `specialists` / `sp-serve` / `sp-script`
+  processes from this session
+- no orphaned tmux sessions matching `sp-*` or `xt-*`
+
 ### 1. Select report: update existing or generate new
 
 For same-day update:
@@ -115,8 +161,8 @@ delete this section. If prior dispatches exist, keep and extend them.
 #### Problems Encountered
 Every problem hit during the session. Root Cause and Resolution columns are
 mandatory. Include: bugs discovered, wrong approaches tried, blockers hit,
-tooling failures. If no problems exist anywhere in the same-day report, delete
-this section entirely.
+tooling failures, and any cleanup-step failures from Step 0 above. If no
+problems exist anywhere in the same-day report, delete this section entirely.
 
 #### Code Changes
 The skeleton lists files. Add narrative:
@@ -127,7 +173,8 @@ The skeleton lists files. Add narrative:
   to the final pushed stack
 
 #### Documentation Updates
-List doc changes, skill updates, memory saves, CHANGELOG entries.
+List doc changes, skill updates, memory saves, CHANGELOG entries
+(see Step 5 — due-diligence sweep — and Step 6 — CHANGELOG sync).
 Delete if no doc work happened.
 
 #### Open Issues with Context
@@ -162,12 +209,108 @@ Ensure all frontmatter counts are accurate after filling/updating:
 - `issues_closed` — actual closed issue count represented in the report
 - `commits` — commit count represented in the report, if known
 
-### 5. Commit the report
+### 5. Due-diligence sweep (paranoid mode — assume you forgot something)
 
-Reports are versioned handoff artifacts and should be tracked.
+Step 0 cleaned the *process* state. This step audits the *content* state.
+Cleanup work the orchestrator usually forgets at session close, ranked by
+how often it gets missed:
+
+- **Service skills**: did this session touch any code under a service
+  registered in `.claude/skills/service-registry.json` (or equivalent
+  registry)? If yes, the service skill's SKILL.md or diagnostic scripts
+  are likely drifted. Run `/updating-service-skills` (or
+  `service-skills-sync` specialist) and let it scan. If no registry exists,
+  skip — but check whether the project keeps service skills under
+  `.xtrm/skills/user/packs/<service>/` and treat them the same.
+- **Docs SSOT**: did the session change architecture, migrations, public
+  APIs, or service ownership? If yes, run `/sync-docs` (or the
+  `sync-docs` specialist) for any drifted doc. Skip if changes are
+  pure-internal (refactors with no observable surface change).
+- **Memories**: every `bd close` should have triggered a memory-gate ack.
+  Run `bd memories <topic>` to confirm anything genuinely novel landed.
+  If you saw a real surprise but acked "nothing novel" out of haste,
+  go back and `bd remember` it now.
+- **CLAUDE.md / project guide**: did this session add or remove a
+  service, change a key port, change a top-level workflow command, or
+  change how tools are wired? If yes, append/correct in CLAUDE.md before
+  commit — the file is loaded automatically by every future session.
+- **Evidence artifacts**: did the session generate reports, dashboards,
+  CSVs, or figures intended to be persisted (`scripts/outputs/`,
+  `docs/review/`, etc.)? Confirm they are committed; otherwise either
+  commit them or document in the report why they were not kept.
+- **Decisions**: did the session make a non-obvious architectural call
+  (deprecating a service, schema choice, dependency swap)? Record via
+  `bd decision` if the project uses it, otherwise note in the report.
+- **Tests**: did new behavior land without tests? If yes, file a test
+  follow-up bead (`discovered-from:<impl-id>`) before closing — do not
+  let untested behavior leave the session silent.
+- **Skill packs (`.xtrm/skills/`)**: did you edit a skill in this
+  project? If the canonical version lives in xtrm-tools, mirror the edit
+  there too (or note that `xt update` will overwrite the local mirror on
+  next sync, which makes the local edit ephemeral).
+- **Open beads created mid-session**: every bead filed this session
+  should be either closed, scheduled with a parent, or marked with clear
+  context. Run `bd list --status=open --created-by=me` (or equivalent)
+  and confirm none are floating without a parent or follow-up note.
+
+If any item above turns up real work, do it now or file a follow-up bead
+linked `discovered-from:<this-session-root>` so the next agent picks it up.
+A clean session means none of these were forgotten — the report should be
+able to honestly claim "due-diligence sweep clean."
+
+### 6. Sync CHANGELOG.md (MANDATORY when user-facing changes shipped)
+
+The session report is for the next *agent*; CHANGELOG.md is for downstream
+*consumers*. Both must stay in sync — the report alone is not enough.
 
 ```bash
-git add .xtrm/reports/
+ls CHANGELOG.md 2>/dev/null   # confirm the project keeps one
+git tag --sort=-v:refname | head -3   # last release tag
+git log <last-tag>..HEAD --oneline    # what is missing
+```
+
+Decision tree:
+
+- **A release was cut this session** (new tag, e.g. via `/releasing` or
+  `changelog-keeper`): the new version section already exists. Verify it
+  contains every user-facing change from the session and that
+  `[Unreleased]` is empty. Stop — release flow owns CHANGELOG.
+- **No release was cut**: append every user-facing change from the session
+  to the existing `[Unreleased]` block at the top of CHANGELOG.md. Use
+  Keep a Changelog categories: `### Added` / `### Changed` / `### Deprecated`
+  / `### Removed` / `### Fixed` / `### Security`. One bullet per change,
+  lead with the affected subsystem or symbol, include the bead ID(s) when
+  available — same prose density as prior `[Unreleased]` entries.
+- **No user-facing change shipped** (pure orchestration, doc-only edits to
+  internal-handoff files like reports/skills, refactors with no observable
+  effect): skip — do not pollute `[Unreleased]` with internal noise. Note
+  the skip in the Documentation Updates section so it is auditable.
+
+What counts as user-facing for `[Unreleased]`:
+- new or removed CLI flags, commands, env vars, config keys
+- new or removed services / containers / jobs an operator deploys
+- schema migrations that downstream consumers see
+- new or removed API/MCP/REST endpoints, tools, or response fields
+- bug fixes that change observable behavior
+- security-relevant changes
+
+What does NOT belong in `[Unreleased]`:
+- session reports themselves
+- skill or memory edits that only affect agents
+- refactors with byte-identical observable behavior
+- per-issue notes that already live in beads
+
+If the project has no CHANGELOG.md, skip silently — do not create one
+without operator direction.
+
+### 7. Commit the report (and CHANGELOG if updated)
+
+Reports are versioned handoff artifacts and should be tracked. If Step 5
+modified `CHANGELOG.md`, fold it into the same commit so the report and
+changelog ship together.
+
+```bash
+git add .xtrm/reports/ CHANGELOG.md   # CHANGELOG.md only if changed
 git commit -m "session report: <date>"
 ```
 
@@ -175,11 +318,29 @@ If you updated an existing same-day report after an earlier report commit, commi
 that update with the same message style or fold it into the current final commit
 before push.
 
+### 8. Final cleanup verification (MANDATORY)
+
+After committing, re-run the Step 0 checks one more time:
+
+```bash
+git worktree list
+sp ps
+ps -ef | grep -E '(serena|gitnexus|specialists|sp-serve|sp-script)' | grep -v grep
+tmux ls 2>/dev/null
+```
+
+If any of these show session-leaked artifacts, stop them now or document them
+in the report. Do not consider the session "closed" until this verification is
+clean.
+
 ## Quality bar
 
 The reference is `~/projects/specialists/.xtrm/reports/2026-03-30-orchestration-session.md`.
 Every report must match that level of detail. Specifically:
 
+- Step 0 cleanup performed before report generation; Step 8 verification clean.
+- Step 5 due-diligence sweep performed; service skills, docs, memories, CLAUDE.md, evidence, decisions, tests, and skill mirrors checked (or skipped with reason).
+- Step 6 CHANGELOG sync performed when user-facing changes shipped (or skip noted).
 - No empty `<!-- FILL -->` markers left in the final output
 - No duplicate same-day reports unless explicitly requested by the operator
 - Every closed issue has context, not just an ID

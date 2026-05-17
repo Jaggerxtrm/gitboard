@@ -164,7 +164,7 @@ function VirtualizedIssueTimeline({ issues }: { issues: GithubIssue[] }) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 28 : 64,
+    estimateSize: (i) => items[i].kind === "header" ? 28 : 40,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });

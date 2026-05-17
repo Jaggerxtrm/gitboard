@@ -1,6 +1,5 @@
-// Sidebar (forge-7xu rebuild). Single-level repo list with RepoIcon octicons,
-// grouped by groupName when present. Filtered by current surface (only show repos
-// that have data on the active side).
+// Sidebar (forge-7xu rebuild). Single-level repo list with RepoIcon octicons.
+// Filtered by current surface and ordered globally by latest real activity.
 
 import { useMemo } from "react";
 import {
@@ -8,7 +7,9 @@ import {
   SidebarExpandIcon,
   ChevronLeftIcon,
   GitPullRequestIcon,
+  GitCommitIcon,
   IssueOpenedIcon,
+  TagIcon,
   CircleIcon,
 } from "@primer/octicons-react";
 import {
@@ -28,19 +29,7 @@ function byRecencyDesc(a: RepoNode, b: RepoNode): number {
 }
 
 function groupRepos(repos: RepoNode[]): { name: string; repos: RepoNode[] }[] {
-  const groups = new Map<string, RepoNode[]>();
-  for (const r of repos) {
-    const g = r.groupName?.trim() || "Ungrouped";
-    const arr = groups.get(g) ?? [];
-    arr.push(r);
-    groups.set(g, arr);
-  }
-  return Array.from(groups.entries())
-    .sort(([a], [b]) => (a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b)))
-    .map(([name, repos]) => ({
-      name,
-      repos: repos.sort(byRecencyDesc),
-    }));
+  return [{ name: "Ungrouped", repos: [...repos].sort(byRecencyDesc) }];
 }
 
 export function Sidebar() {
@@ -116,7 +105,9 @@ function RepoRow({
   onSelect: () => void;
 }) {
   const prs = repo.githubStats.openPRs;
+  const commits = repo.githubStats.commitsToday;
   const issues = repo.githubStats.openIssues;
+  const releases = repo.githubStats.releases;
   const beads = repo.openBeadsCount;
 
   return (
@@ -133,15 +124,27 @@ function RepoRow({
       <span className="ide-repo-name">{repo.displayName}</span>
       <span className="ide-repo-stats" aria-hidden="true">
         {prs > 0 && (
-          <span className="ide-stat-chip" title={`${prs} open PRs`}>
+          <span className="ide-stat-chip ide-stat-chip-pr" title={`${prs} PRs opened today`}>
             <GitPullRequestIcon size={11} />
             <span className="ide-stat-chip-num">{prs}</span>
           </span>
         )}
+        {commits > 0 && (
+          <span className="ide-stat-chip ide-stat-chip-commit" title={`${commits} push events today`}>
+            <GitCommitIcon size={11} />
+            <span className="ide-stat-chip-num">{commits}</span>
+          </span>
+        )}
         {issues > 0 && (
-          <span className="ide-stat-chip" title={`${issues} open issues`}>
+          <span className="ide-stat-chip ide-stat-chip-issue" title={`${issues} issues opened today`}>
             <IssueOpenedIcon size={11} />
             <span className="ide-stat-chip-num">{issues}</span>
+          </span>
+        )}
+        {releases > 0 && (
+          <span className="ide-stat-chip ide-stat-chip-release" title={`${releases} releases today`}>
+            <TagIcon size={11} />
+            <span className="ide-stat-chip-num">{releases}</span>
           </span>
         )}
         {beads > 0 && (

@@ -347,6 +347,8 @@ export function getRepoStats(db: Database): RepoStat[] {
       COUNT(CASE WHEN type = 'PushEvent' AND created_at > datetime('now', '-24 hours') THEN 1 END) AS pushes,
       COUNT(CASE WHEN type = 'PullRequestEvent' AND action = 'opened' AND created_at > datetime('now', '-24 hours') THEN 1 END) AS prs_open,
       COUNT(CASE WHEN type = 'PullRequestEvent' AND action IN ('closed', 'merged') AND created_at > datetime('now', '-24 hours') THEN 1 END) AS prs_closed,
+      COUNT(CASE WHEN type = 'IssuesEvent' AND action = 'opened' AND created_at > datetime('now', '-24 hours') THEN 1 END) AS issues_open,
+      COUNT(CASE WHEN type = 'ReleaseEvent' AND created_at > datetime('now', '-24 hours') THEN 1 END) AS releases,
       MAX(CASE WHEN type NOT IN ('WatchEvent', 'ForkEvent', 'MemberEvent') THEN created_at END) AS last_event_at
     FROM github_events
     GROUP BY repo

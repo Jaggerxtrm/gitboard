@@ -1,5 +1,23 @@
 {
   "mcpServers": {
+    "github-grep": {
+      "type": "http",
+      "url": "https://mcp.grep.app"
+    },
+    "deepwiki": {
+      "type": "http",
+      "url": "https://mcp.deepwiki.com/mcp"
+    },
+    "gitnexus": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "gitnexus",
+        "mcp"
+      ],
+      "env": {}
+    },
     "serena": {
       "type": "stdio",
       "command": "uvx",
@@ -19,14 +37,6 @@
       "headers": {
         "CONTEXT7_API_KEY": ""
       }
-    },
-    "github-grep": {
-      "type": "http",
-      "url": "https://mcp.grep.app"
-    },
-    "deepwiki": {
-      "type": "http",
-      "url": "https://mcp.deepwiki.com/mcp"
     }
   }
 }

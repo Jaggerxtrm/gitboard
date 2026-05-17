@@ -114,6 +114,7 @@ export interface BeadsStats {
   in_progress: number;
   blocked: number;
   closed: number;
+  last_activity_at: string | null;
   by_priority: Record<string, number>;
   by_type: Record<string, number>;
 }

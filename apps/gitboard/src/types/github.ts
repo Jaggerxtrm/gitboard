@@ -58,6 +58,8 @@ export interface RepoStat {
   pushes: number;
   prs_open: number;
   prs_closed: number;
+  issues_open: number;
+  releases: number;
   last_event_at: string | null;
 }
 

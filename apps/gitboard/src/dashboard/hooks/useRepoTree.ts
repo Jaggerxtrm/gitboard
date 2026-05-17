@@ -73,16 +73,16 @@ export function useRepoTree(): void {
           const stats = repoStatsByName.get(repo.full_name);
           const githubStats: GithubChips = {
             openPRs: stats?.prs_open ?? 0,
-            commitsToday: 0,
-            openIssues: 0,
-            releases: 0,
+            commitsToday: stats?.pushes ?? 0,
+            openIssues: stats?.issues_open ?? 0,
+            releases: stats?.releases ?? 0,
           };
           const beadsStats = beadsChipsFromStats(beadsSide?.stats ?? null);
           nodes.push({
             fullName: repo.full_name,
             displayName: repo.display_name ?? repo.full_name,
             groupName: repo.group_name ?? null,
-            lastActivityAt: maxIso(stats?.last_event_at ?? null, beadsSide?.project.lastScanned ?? null),
+            lastActivityAt: maxIso(stats?.last_event_at ?? null, beadsSide?.stats?.last_activity_at ?? null),
             openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
             githubStats,
             beadsStats,
@@ -99,7 +99,7 @@ export function useRepoTree(): void {
             fullName: project.name,
             displayName: project.name,
             groupName: null,
-            lastActivityAt: project.lastScanned,
+            lastActivityAt: stats?.last_activity_at ?? null,
             openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
             githubStats: ZERO_GITHUB,
             beadsStats,

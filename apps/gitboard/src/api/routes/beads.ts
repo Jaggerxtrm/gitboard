@@ -168,6 +168,12 @@ beadsRoutes.get("/projects/:id/stats", async (c) => {
     const scanner = await getScanner();
     const issues = await getIssues(scanner, projectId);
 
+    const lastActivityAt = issues.reduce<string | null>((latest, issue) => {
+      const candidate = issue.closed_at || issue.updated_at || issue.created_at;
+      if (!candidate) return latest;
+      return !latest || candidate > latest ? candidate : latest;
+    }, null);
+
     return c.json({
       stats: {
         total: issues.filter(i => i.status !== "closed").length,
@@ -175,6 +181,7 @@ beadsRoutes.get("/projects/:id/stats", async (c) => {
         in_progress: issues.filter(i => i.status === "in_progress").length,
         blocked: issues.filter(i => i.status === "blocked").length,
         closed: issues.filter(i => i.status === "closed").length,
+        last_activity_at: lastActivityAt,
         by_priority: {
           p0: issues.filter(i => i.priority === 0).length,
           p1: issues.filter(i => i.priority === 1).length,

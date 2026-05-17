@@ -20,7 +20,7 @@ interface BeadCardProps {
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon; color: string }> = {
-  bug: { label: "Bug", icon: IssueOpenedIcon, color: "var(--status-blocked)" },
+  bug: { label: "Bug", icon: IssueOpenedIcon, color: "#ff4d5e" },
   feature: { label: "Feature", icon: NorthStarIcon, color: "var(--accent-blue)" },
   task: { label: "Task", icon: ProjectIcon, color: "var(--text-secondary)" },
   epic: { label: "Epic", icon: MilestoneIcon, color: "var(--accent-purple)" },

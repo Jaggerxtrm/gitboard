@@ -4,8 +4,10 @@ description: >
   Canonical specialist orchestration skill. Use proactively for substantial work
   that should be delegated, tracked, reviewed, fixed, tested, or merged through
   specialists: code review, debugging, implementation, planning, doc sync,
-  security checks, multi-step chains, and questions about specialist workflow.
-version: 3.2
+  security checks, multi-step chains, integration-phase reconciliation,
+  debugger-restitch on conflicting chains, pre-dispatch conflict-cluster
+  mapping, test-failure-map epics, and questions about specialist workflow.
+version: 3.3
 ---
 
 # Using Specialists v3
@@ -13,6 +15,163 @@ version: 3.2
 You are the orchestrator. Turn user intent into a strong bead contract, choose right specialist from live registry, launch chain, monitor it, consume results, drive fixes, and publish through specialist merge path.
 
 Keep skill practical. Core behavior belongs here; volatile detail stays in live commands.
+
+> **MANDATORY — Run on skill load and before every new substantial task or epic:**
+> ```bash
+> specialists list --full
+> ```
+> Do not rely on remembered roles, models, or permissions. The registry is the source of truth.
+> Run it again before dispatching any new chain or starting any epic — specialists change between sessions.
+
+## Specialist File Locations
+
+Specialists live in three layers. Know which layer you are reading or editing:
+
+| Layer | Path | Purpose |
+|-------|------|---------|
+| Package (shipped) | `config/specialists/*.specialist.json` | Canonical role definitions; versioned with the repo |
+| User override | `.specialists/user/*.specialist.json` | Per-project customizations; wins over package layer for same name |
+| Default mirror | `.specialists/default/*.specialist.json` | Repo-managed mirror of package defaults; overrides package fallback |
+
+The loader resolves in priority order: user → default-mirror → package. A same-name file in `.specialists/user/` fully replaces the package version for that specialist. When creating or editing a specialist, use `config/specialists/` for shipped roles and `.specialists/user/` for project-specific overrides. Never edit `.specialists/default/` by hand — it is managed by `update-specialists`.
+
+`specialists list --full` shows the resolved set (which layer each specialist comes from) so you always know what will actually run.
+
+### Editing Specialist Fields: `sp edit` Is Required
+
+Direct JSON editing is error-prone and bypasses schema validation. Use `sp edit` for all field changes — it validates dot-paths, handles array append/remove, and writes to the correct layer.
+
+```bash
+# Read a field
+sp edit executor --get specialist.execution.model
+
+# Set a field (schema-validated)
+sp edit executor specialist.execution.model <model-id>
+
+# Set prompt.system or task_template from a file (required for multi-line content)
+sp edit executor --set specialist.prompt.system _ --file ./my-system-prompt.txt
+
+# Append or remove tags
+sp edit executor --set specialist.metadata.tags review,security --append
+sp edit executor --set specialist.metadata.tags old-tag --remove
+
+# Apply a named preset (run sp edit --list-presets for current options)
+sp edit executor --preset power
+sp edit executor --preset cheap --dry-run   # preview first
+
+# Target a specific scope when name exists in multiple layers
+sp edit executor --scope user --set specialist.execution.model <model-id>
+
+# Bulk read across all specialists
+sp edit --all --get specialist.execution.model
+```
+
+**When `sp edit` is required vs. direct JSON edit:**
+- Model, thinking level, timeout, tags, permission, description → always `sp edit`
+- `prompt.system` or `task_template` longer than one line → `sp edit --file`
+- Structural schema fields (execution flags, output_schema) → `sp edit` with dot-path
+- Net-new specialist creation → `specialists-creator` skill, then `sp edit` for tuning
+- Bulk cross-specialist reads → `sp edit --all --get <path>`
+- Available presets → `sp edit --list-presets` (do not hardcode; varies by install)
+
+## Orchestration Discipline (Paranoid Mode)
+
+You are an orchestrator, not a hero. Move slowly enough to be correct.
+
+- Run `specialists list --full` and `sp help` again at the start of every new substantial task. Do not skip because "you remember." Roles, models, and flags drift between sessions.
+- Re-read the bead before dispatch. If you cannot defend each contract field out loud, the bead is not ready.
+- Never dispatch a chain you cannot describe end-to-end (which specialist, which bead, which workspace, which merge target).
+- Verify worktree and job state before and after each dispatch with `sp ps` and `git worktree list`. Drift is silent until merge.
+- Treat reviewer `PARTIAL` and code-sanity `FINDINGS` as mandatory fix loops, not advisory noise.
+- When unsure, prefer extra explorer/debugger passes over an over-eager executor. Wrong code merged is more expensive than slow research.
+
+## Project-Specific Specialists
+
+Users define their own specialists in `.specialists/user/*.specialist.json` to fit project shape (domain knowledge, language, framework, conventions). These override package defaults and may not match generic role descriptions.
+
+- Always run `specialists list --full` to see the resolved set, including project-specific roles, before choosing.
+- Read `sp help` and the specialist's description/tags to confirm fit. Do not assume a name maps to its package-default behavior — a `.specialists/user/` override may have a different prompt, model, or scope.
+- Pick the project-specific specialist when its role matches the task shape. Do not fall back to a generic role just because it is more familiar.
+- If the task does not match any project-specific role, use the package default and consider whether a new project-specific specialist would help (use `specialists-creator` skill).
+
+## Advisory Passes Are Part Of Every Chain
+
+For any substantive diff, the chain shape is:
+
+```
+executor → code-sanity (if smell) → security-auditor (if risk surface) → reviewer → merge
+```
+
+Triggers:
+
+- `code-sanity` — cheap simplification and type-safety screen. Run when diff smells overcomplicated, brittle, or duplicates logic. Output is advisory; reviewer still gates merge.
+- `security-auditor` — scan-only risk surface review. Run when diff touches auth, secrets, input handling (user/network/file), dependency lockfiles, agent/MCP/config surfaces, or token-storage paths. Output is advisory; executor applies fixes.
+- Both run with their own bead and `--job <exec-job>` so they enter the executor workspace.
+
+Routing patterns (cross-referenced from Integration / Restitch / E2E sections):
+
+- **Cherry-pick integration**: advisory passes run on the last executor job in each chain BEFORE the squash-commit step.
+- **Debugger-restitch**: advisory passes run on the debugger's job AFTER the restitch turn, BEFORE reviewer.
+- **E2E smoke phase**: security-auditor runs on the cumulative integrated diff if any landed chain touched a sensitive surface, BEFORE smoke completes.
+- **Reviewer rebuttal**: code-sanity / security-auditor findings count as legitimate evidence to support or rebut a reviewer verdict.
+
+Skipping triggers:
+
+- Diff is purely additive (new files only, no existing-symbol modifications) → advisory passes optional; note new-file scope in the chain handoff.
+- Test-only diffs (entirely under `test/` or `tests/`) → skip security-auditor by default; still run code-sanity if test logic is non-trivial.
+- Anything else, skipping is an escalation event — never skip security-auditor on auth/secrets/input changes "because the diff looks small." Small diffs hide the worst regressions.
+
+## Monitoring Long-Running Jobs: Sleep Timers Are Mandatory
+
+Specialists run async. You will lose the chain if you do not actively monitor it.
+
+**Required pattern after every dispatch:**
+
+```bash
+sp run <role> --bead <id> --background ...   # dispatch
+sleep 10 && sp ps                             # confirm started
+```
+
+Then cycle sleeps based on average completion time per role, checking `sp ps` each cycle:
+
+| Role | Typical duration | Initial sleep cycle |
+|------|------------------|---------------------|
+| sync-docs, changelog-keeper | 60–180s | `sleep 60` then `sleep 60` |
+| code-sanity, security-auditor | 60–180s | `sleep 60` then `sleep 60` |
+| reviewer | 90–240s | `sleep 90` then `sleep 60` |
+| explorer, debugger, planner, overthinker | 120–300s | `sleep 120` then `sleep 90` |
+| executor | 180–600s+ | `sleep 180` then `sleep 120` |
+| test-runner | varies with suite | start at `sleep 120`, adjust |
+
+Rules:
+- After dispatch, **always** `sleep 10 && sp ps` first to confirm the job is `running`, not stuck in `queued` or already `failed`.
+- Then sleep again per the table; check `sp ps` each cycle.
+- Do not poll faster than every 30s after the initial check — it wastes context.
+- When status flips to `completed`, run `sp result <job-id>` immediately to consume output before context grows.
+- If a job exceeds 2× its typical duration without completing, inspect with `sp feed <job-id>` before assuming hang.
+
+You are not "done" until every dispatched job is `completed` or `failed` and consumed.
+
+## Worktree Cleanup After Merge
+
+`sp merge` and `sp epic merge` clean up automatically when they succeed. If you fall back to manual `git merge` (e.g., doc-only chains), you own cleanup.
+
+After every merge, verify:
+
+```bash
+git worktree list                 # any orphaned worktrees from this session?
+sp ps                             # any leftover jobs?
+git worktree prune                # drop stale worktree metadata
+```
+
+If a feature/epic worktree remains after merge, remove it explicitly:
+
+```bash
+git worktree remove <path>
+git branch -d <merged-branch>     # only after confirming merged
+```
+
+`sp ps` must have no active jobs and no unresolved terminal problems before session close. If it only shows old terminal history that you have intentionally acknowledged, run `sp clean --ps --dry-run` and then `sp clean --ps` to soft-hide those rows from the default dashboard. This does not delete SQLite history or change job status; use `sp ps --include-cleaned` or `sp ps --all` for audit visibility. Stale worktrees and stale jobs both block future dispatches via the stale-base guard.
 
 ## When To Delegate
 
@@ -34,6 +193,27 @@ Do small deterministic edits directly when scope is already obvious and delegati
 10. Specialists must not perform destructive or irreversible operations.
 11. Treat tests as evidence: classify failures as in-scope, pre-existing, or infrastructure before starting fix loop.
 12. Drive routine stages autonomously once task is clear. Escalate only for human judgment, destructive actions, repeated crashes, or reviewer `FAIL`.
+13. The orchestrator NEVER edits code directly. Conflict resolution, even mechanical, goes through a debugger or executor specialist. Manual conflict resolution always escalates to the operator.
+
+## Escalation Matrix
+
+| Action | Default | Always escalate to operator |
+|---|---|---|
+| Code edit | Specialist only | (never orchestrator-direct) |
+| Cherry-pick onto integration branch | Auto if non-overlapping | Conflict requiring manual edits |
+| Manual conflict resolution | Never | Always |
+| Force push | Never | Always |
+| Branch delete | Never | Always |
+| Stash pop where conflict expected | Auto | Stash conflict that destroys session-start state |
+| `bd dolt fsck --revive-journal-with-data-loss` | Never | Always — explicit data-loss warning |
+| `sp epic merge` | Auto if all children PASSed | Skip if any child reviewer-FAILed |
+| Skip `code-sanity` on substantive diff | Auto-skip only on test-only or new-file-only diffs | Always escalate before skipping on multi-file production diff |
+| Skip `security-auditor` on diff touching auth/secrets/input/agent-config | Never | Always — sensitive-surface diffs always get the pass |
+| `sp stop <job>` | Auto when job is done/stale | Never on actively-running unless context blown |
+| `git push origin <branch>` | Auto for chain branches | Force-push or delete-remote always |
+| `npm publish` | Never | Always |
+| Dependency bump | Auto for security-patch bumps | Major/minor bumps escalate |
+| Config file schema-changing edit | Never | Always |
 
 ## Live Registry And Help
 
@@ -52,6 +232,9 @@ sp ps --help
 sp feed --help
 sp result --help
 sp resume --help
+sp steer --help
+sp stop --help
+sp finalize --help
 sp merge --help
 sp epic --help
 ```
@@ -234,7 +417,7 @@ Run `specialists list` if you need live registry. Choose by task, not habit.
 | Multiple review perspectives | `parallel-review` | Critical diff needs independent review passes |
 | Test execution | `test-runner` | Need suites run and failures interpreted |
 | Docs audit/sync | `sync-docs` | Docs may be stale or need targeted synchronization |
-| External/live research | `researcher` | Current non-security library/docs/media lookup is needed |
+| External/live research | `researcher` | Any library/API/framework/CLI question — dispatch BEFORE answering from training data |
 | Specialist config | `specialists-creator` | Creating or changing specialist JSON/config |
 | Release publication | `changelog-keeper` | New tag is being cut |
 
@@ -248,8 +431,24 @@ Selection rules:
 - Executor, debugger, changelog-keeper, sync-docs, and test-runner should not carry mandatory `<thinking>` blocks. That bloats output without payoff and hides the real contract.
 - Executor does not own full test validation; use reviewer/test-runner for that phase.
 - Sync-docs is for audit/sync; executor is for heavy doc rewrites.
-- Researcher is for current external info, not repo archaeology.
+- Researcher is for current external info, not repo archaeology. **Dispatch BEFORE answering any library/API/framework/CLI question from training data** — your knowledge is stale by months and APIs drift silently. The cost is one CLI call; the alternative is shipping wrong API usage.
 - Specialists-creator should precede specialist config/schema edits.
+
+## Bug Diagnosis Chain
+
+For symptoms, errors, regressions, flakes, or failing tests where cause is unknown, start with diagnosis — not implementation. Do not dispatch executor while cause is unknown; executor is for clear implementation scope only.
+
+Default chain:
+
+1. **test-runner** or **debugger** establishes a fast deterministic feedback loop. If no loop can be built, debugger reports the blocker — do not patch in the dark.
+2. **debugger** reproduces the symptom, writes 3–5 falsifiable hypotheses, and tests one variable at a time. Any temporary instrumentation must be tagged `[DEBUG-<id>]` and removed before completion.
+3. **debugger** applies the minimal root-cause fix on the fault line and verifies via targeted lint/typecheck plus the focused repro.
+4. **test-runner** reruns the original repro/regression command (full-suite validation is its job, not debugger's).
+5. **code-sanity** runs if the fix smells brittle, overcomplicated, or type-risky. **security-auditor** runs if the fix touches auth/session/secrets/input handling, dependency logic, or agent/MCP/hook config.
+6. **reviewer** gates the final diff against the bead contract.
+7. If no correct regression-test seam exists, route the architecture/testability finding to **overthinker** or **planner** — do not force a brittle test just to close the loop.
+
+Explorer is useful before diagnosis only when no concrete symptom exists and architecture is unknown. For real bugs with a symptom, use debugger.
 
 ## Code-sanity
 
@@ -326,6 +525,57 @@ epic
 
 What differs: orchestrator sees edge shape up front, so can pick sequential chain, fix loop, or multi-chain epic without graph drift.
 
+## Pre-Dispatch: Conflict Cluster Identification
+
+Before dispatching N parallel chains, build the file-overlap matrix:
+
+| Chain | Touches | Overlap with |
+|-------|---------|--------------|
+| chain-A | src/cli/update.ts | chain-B, chain-C |
+| chain-B | src/cli/update.ts, src/cli/install.ts | chain-A, chain-C, chain-D |
+| chain-C | src/cli/update.ts, src/cli/install.ts, src/cli/doctor.ts | chain-A, chain-B |
+
+For each cluster of overlapping chains, choose **one** of:
+
+1. **Serial dispatch** — execute chains in dependency order, each waits for previous to land. Slowest but cleanest.
+2. **Unified bead** — collapse all chains into one bead/executor pass. Larger reviewer scope but no merge conflicts.
+3. **Parallel dispatch + debugger restitch at integration** — dispatch in parallel, plan for ~40% conflict rate (empirical), budget debugger-restitch passes during integration.
+
+Default heuristic: if 3+ chains touch the same file, **serial-dispatch them**. Conflict-resolution time at integration usually exceeds the time saved by parallel dispatch.
+
+## Pre-Epic: Test-Failure-Map Pattern
+
+Use when:
+- A test suite shows ≥ ~5 failures and the operator says "fix all"
+- The failures span multiple files / subsystems
+- Root causes are not yet attributed per failure
+
+### Step-by-step
+
+1. **Run the suite once**, save the full log. Do not interpret yet.
+2. **File one mapping bead** (e.g., `test-runner: refresh <epic> failure map`) with contract:
+   - `PROBLEM:` exact command + exit status + raw failure count.
+   - `SUCCESS:` cluster table grouping every failure by **likely shared root cause and file scope**, plus recommended fix-chain order.
+   - `SCOPE:` the log file path + bounded test files involved.
+   - `CONSTRAINTS:` READ_ONLY, no source/test edits, no fix attempts.
+3. **Dispatch test-runner / explorer / debugger** for this bead READ_ONLY (or fill inline by reading the log).
+4. **Build the cluster table**: cluster name | files (counts) | representative error | root-cause hypothesis | likely-owner area | targeted validation command. Save in bead notes.
+5. **Plan fix chains** off the cluster table:
+   - One chain per cluster, file scopes disjoint where possible.
+   - Order by leverage (largest cluster first), then by simplicity.
+   - Debugger when root cause unclear; executor when bead constraint is concrete.
+6. **Save the topology insight as `bd remember`** — patterns about where a codebase's test fragility concentrates are reusable.
+
+### Why this beats dispatch-blind
+
+When 34 failures collapsed under 5 clusters in one observed run, 56% of failures shared a single root cause. A blind parallel dispatch would have over-dispatched 19 fixes instead of 1. Net specialist spend ~3× higher without the mapping pass.
+
+### Failure modes to watch for
+
+- Clusters that look shared but aren't — same error string in unrelated tests may hide different root causes. Confirm via stack traces, not error text alone.
+- One cluster's fix introduces another's regression — each chain's VALIDATION must span all known-failing areas with "no regressions in other clusters."
+- Pre-existing failures vs new regressions — name pre-existing failures explicitly in each chain's NON_GOALS so reviewers don't FAIL on them.
+
 ## Canonical Single-Chain Flow
 
 Use for one implementation branch.
@@ -360,12 +610,18 @@ bd dep add <review> <impl>
 specialists run reviewer --bead <review> --job <exec-job> --context-depth 3
 specialists result <review-job>
 
-# 6. Publish after reviewer PASS
+# 6. Cascade-finalize the chain after reviewer PASS
+# (auto-finalize fires automatically when reviewer PASS appears in
+# streaming output. PASS delivered via `sp resume` does not stream —
+# run sp finalize to close any waiting keep-alive members.)
+sp finalize <review-job>     # accepts any chain member; cascades to all waiting members
+
+# 7. Publish
 sp merge <impl>
 bd close <task> --reason "Reviewer PASS; merged."
 ```
 
-Edit-capable specialists with `--bead` auto-provision a worktree. `--worktree` is accepted for clarity but usually unnecessary. Use `--job <exec-job>` for reviewer/fix passes that must enter existing executor workspace.
+Edit-capable specialists with `--bead` auto-provision a clean git worktree. This does **not** provision ignored project dependency artifacts (`node_modules/`, `.venv/`, build caches). If validation tools are missing inside that worktree, have the specialist run the repo's standard bootstrap command (`make bootstrap`, `just setup`, `npm ci`, `uv sync`, etc.) or report that bootstrap is required; do not solve it by tracking dependency directories. `--worktree` is accepted for clarity but usually unnecessary. Use `--job <exec-job>` for reviewer/fix passes that must enter existing executor workspace.
 
 What differs: orchestrator carries full bead contract inline, so downstream specialists inherit the actual job shape, not a title.
 
@@ -393,9 +649,14 @@ specialists run executor --bead <impl-b> --context-depth 3
 specialists run reviewer --bead <review-a> --job <exec-a-job> --context-depth 3
 specialists run reviewer --bead <review-b> --job <exec-b-job> --context-depth 3
 
+# Per-chain cascade-finalize (only needed if PASS arrived via sp resume;
+# auto-finalize handles the streaming case automatically)
+sp finalize <review-a-job>
+sp finalize <review-b-job>
+
 # Publish
-sp epic status <epic>
-sp epic merge <epic>
+sp epic status <epic>          # verify derived state shows merge_ready
+sp epic merge <epic>           # batch publish all chains in dependency order with tsc gate per merge
 ```
 
 Use `--epic <id>` when job belongs to epic but bead is not direct child. Avoid parallel executors on same file; sequence them or consolidate work.
@@ -412,8 +673,8 @@ optional code-sanity/security-auditor -> advisory findings
 reviewer -> PASS | PARTIAL | FAIL
 ```
 
-- `PASS`: verify expected commit/diff, then publish.
-- `PARTIAL`: resume same executor/debugger with exact findings, then re-review.
+- `PASS`: verify expected commit/diff. If reviewer's PASS appeared in its streaming output, auto-finalize already closed the chain — go straight to `sp merge` / `sp epic merge`. If PASS arrived via `sp resume`, run `sp finalize <any-chain-job-id>` first to cascade-close any waiting keep-alive members, then publish.
+- `PARTIAL`: resume same executor/debugger with exact findings, then re-review (`sp resume <reviewer-job>`).
 - `FAIL`: stop and decide whether to replace chain, re-scope bead, or ask operator if judgment is required.
 
 Prefer resume over new fix executor when original job is waiting and context is healthy:
@@ -444,9 +705,45 @@ Overthinker:
 - Chain position: before planner/executor when design uncertainty is high.
 
 Researcher:
-- Use for current external docs, package behavior, or ecosystem facts that repo cannot answer.
-- Bead shape: source list, question set, required citations.
-- Chain position: before executor when outside facts matter.
+- Dispatch **BEFORE** answering any library/API/framework/CLI question from training data. Training is months stale; APIs change; cheap CLI lookups (`ctx7`, `deepwiki`, `ghgrep`) replace the guess.
+- Use for: API syntax checks, config options, version migrations, library-specific debugging, "how do others implement X", recent releases, public repo internals.
+- Anti-pattern to break: "I think Library X works like Y…" → instead dispatch researcher with the exact question. The cost (~30s, `openai-codex/gpt-5.4-mini` via tool mode) is far less than shipping wrong API usage.
+- Bead shape: source list (which libraries/repos), question set, required citations (library ID or `npx ctx7 docs /org/project "..."` output).
+- Chain position: before executor when outside facts matter; alongside explorer when a question mixes local code with external behavior.
+- Keep-alive: ask follow-ups in the same job rather than re-dispatching — researcher stays in waiting state after each turn.
+
+Three modes — researcher picks automatically based on bead shape; you write the bead, not the mode:
+
+- **Targeted lookup** (most common): "How do I configure X in library Y v1.2?" / "What does Z.method() return now?" / "Are foo and bar still the canonical replacements for baz?" → researcher resolves library ID via `ctx7 library`, then `ctx7 docs /org/project "<intent-rich query>"`. For repo-specific internals (e.g. "How does Vite handle X internally?"), `deepwiki ask <owner/repo> "..."`.
+- **Discovery**: "How do production codebases handle X?" / "Find good examples of pattern Y" / "What does the ecosystem do for Z?" → `ghgrep "<literal pattern>" --lang <langs> --repo <maybe>`, scan results, drill into the best repos with `deepwiki toc` + `deepwiki ask`.
+- **Media / discussion-recency** (rare): YouTube transcripts, social-media trends. Triggers on URLs or "what are people saying about X right now". Researcher loads `last30days` skill on-demand for this — don't fold its setup into the bead.
+
+### Dispatch triggers — when the orchestrator should reach for researcher
+
+Concrete agent thoughts that MUST be replaced with a researcher dispatch:
+
+| Agent thought | Researcher bead |
+|---|---|
+| "I think `useEffect` cleanup works like…" | `ctx7 docs /facebook/react "useEffect cleanup with async operations"` |
+| "Next.js app router middleware should be…" | `ctx7 docs /vercel/next.js "app router middleware patterns"` |
+| "Let me check if `--target` is a valid flag for tool X" | `ctx7 docs /org/tool-x "--target flag"` or `tool-x --help` (orchestrator-side if it's installed) |
+| "Production code probably handles X by…" | `ghgrep "<X-pattern>" --lang TypeScript --limit 5` then `deepwiki ask <best-repo> "<design question>"` |
+| "Library Y added feature Z in v3 (I think)" | `ctx7 library <Y> "Z"` → `ctx7 docs /org/Y/<version> "Z"` to verify version + behavior |
+| "Repo X's authentication architecture is…" | `deepwiki ask owner/X "How does the auth middleware work? What stores tokens? What controls expiry?"` |
+| "Cross-library: do A and B compose like Z?" | `deepwiki ask repo-A repo-B "How do these interact for use-case Z?"` |
+
+If you catch yourself making any of these claims without first dispatching researcher, you are about to ship stale information. Stop and dispatch.
+
+### Cost framing
+
+Researcher runs on `openai-codex/gpt-5.4-mini` via tool mode, keep-alive. Typical turn: 20-40s wall clock, ~$0.005-0.02 per call. The cost of shipping a wrong API call (debugger turn + executor fix + reviewer re-run, or worse, production regression) is orders of magnitude higher. Default to dispatch.
+
+### What researcher does NOT do
+
+- Local code mapping → use `explorer` (READ_ONLY, traces project code without external CLI cost).
+- Bug root-cause when symptoms are local → use `debugger`.
+- Reading internal docs already in this repo → use direct file read or `explorer`.
+- Security audit of third-party packages → use `security-auditor`; researcher's job is the API surface, not the threat model.
 
 Test-runner:
 - Use when commands need to run and failures need classification, not fixes.
@@ -460,17 +757,44 @@ Sync-docs:
 
 What differs: orchestrator uses specialists beyond the common trio, so planning, diagnosis, research, tests, and docs do not collapse into executor work.
 
+## Specialist Rebuttal As Routine
+
+Several specialists default to over-cautious verdicts when an evidence gate looks unsatisfied. The orchestrator's job is to challenge that verdict with cited evidence, not to accept it. Common rebuttal-worthy patterns:
+
+### Overthinker
+
+- "Hold for operator decision" without specifying what decision is needed → push: "Cite file/line evidence for why this is a product decision rather than a mechanical resolution."
+- "Close as superseded by X" without verification → push: "Read the current state of `<file>` and check whether feature Y from this bead is actually present."
+- "Run separate small beads" or "run one big bead" without rationale → push: "Pick one and explain operationally — cost difference, conflict expectations, reviewer scope."
+
+### Reviewer
+
+- "PARTIAL — missing `gitnexus_impact` evidence" on a test-only diff → rebut: "Diff is entirely under `test/` (N files). `gitnexus_impact` analyzes runtime call graphs; test fixture mocks have no callers in the production graph. Bead's impact-gate constraint is conditional on modifying a runtime entrypoint, which did not happen here."
+- "PARTIAL — missing `gitnexus_impact`" on a small LOW-blast-radius production diff where executor used `gitnexus_detect_changes` instead → rebut: cite the executor's `impact_report.highest_risk: LOW`, the LOC count, single helper / single consumer scope. The reviewer prompt accepts `gitnexus_impact` OR `$gitnexus_summary` OR `gitnexus_detect_changes` OR LOW `impact_report` as evidence.
+- "FAIL — full suite shows N+1 fails" where one is a known concurrent-run flake → rebut: rerun the suspect test in isolation, paste clean output, resume reviewer with "Isolated rerun: P/P. Re-evaluate."
+
+### General rule
+
+Resume with explicit ammunition: file/line refs, exact rerun output, link to the bead memory documenting the rebuttal pattern. Don't argue from authority; argue from new evidence. **Findings from code-sanity / security-auditor are legitimate rebuttal evidence** — a clean code-sanity OK or a security-auditor "no findings" is concrete proof against a reviewer's "looks too complex" or "may have security risk" gate. Cite the advisory job id when rebutting on this axis.
+
+**One rebuttal per reviewer is the limit.** Second FAIL after rebuttal means stop and report. After a successful rebuttal, save the rebuttal text to `bd remember "<key>"` so the next session inherits it.
+
 ## Monitoring And Steering
 
 Use `sp ps` for state and `sp result` for completed turns.
 
 ```bash
-sp ps
-sp ps <job-id>
-sp ps --bead <bead-id>
+sp ps                         # active jobs + unresolved terminal problems
+sp ps --active                # active jobs only
+sp ps --health                # include detailed process tables
+sp ps --include-terminal      # include uncleaned terminal history
+sp ps --include-cleaned       # include rows hidden by sp clean --ps
+sp ps --all                   # full audit view, including cleaned/dead/history
 sp feed <job-id>
 sp result <job-id>
 ```
+
+Default `sp ps` is the actionable dashboard, not raw history. Error/cancelled terminal rows stay visible until an operator acknowledges them with `sp clean --ps`; cleaned rows remain in SQLite and are visible via `--include-cleaned`/`--all`.
 
 If job is running, use `sp feed`. If it is waiting, use `sp result` and decide whether to resume, review, merge, or stop. Avoid tight polling; sleep based on task size, then check once.
 
@@ -490,10 +814,57 @@ Context usage is an action signal when available:
 
 Raw token totals are not context percentages.
 
+### Long autonomous runs — dual-mechanism monitoring
+
+For sessions where the operator is offline (overnight, async windows), use both:
+
+1. **Bash sleep timers per dispatch**, sized per role (see Monitoring Long-Running Jobs above). Bash sleep waits for an expected completion.
+2. **External cron loop** (Claude Code: `/loop 180s sp ps`) as a heartbeat at fixed cadence regardless of orchestrator's bash sleeps. Cron catches specialists that finished while the orchestrator was busy reading other results, and catches stalls.
+
+The two complement: bash sleep waits for an expected completion; cron catches unexpected completions and stalls. Without the cron, the orchestrator can miss specialists that completed during a long bash poll cycle and waste turns re-polling.
+
+## Bead Lifecycle And Parallel Commit Ordering
+
+The bd commit-gate is **project-wide**, not per-worktree. While **any** bead in the project is `in_progress`, **no** worktree can commit. Practical consequences for parallel-chain epics:
+
+- You CAN dispatch two executors in parallel — they work in separate worktrees, no commit-time collision.
+- But once executor A returns and executor B is still running, you CANNOT commit A's worktree until B's bead is closed (or vice versa).
+- Workflow: close the finished chain's executor bead FIRST (memory-ack + `bd close`), THEN commit that chain's worktree, THEN wait on the other chain.
+- This forces a serial-tail on the commit step. Plan for it: parallel-dispatch saves time on the *thinking* step, not the commit step.
+
+If the commit-gate blocks unexpectedly mid-orchestration, `bd query "status=in_progress"` reveals which claim is holding it open.
+
+### Memory-gate batch close
+
+`bd close` is blocked until `memory-acked:<id>` exists. For batch-closing many orchestrator-internal beads (sanity beads, reviewer beads, decomposition trackers), use:
+
+```bash
+for id in <impl> <sanity?> <review>; do
+  bd kv set "memory-acked:$id" "saved:<chain-memory-key>"   # OR "nothing novel: <reason>"
+done
+bd close <impl> <sanity?> <review> <parent> --reason "..."
+```
+
+The chain memory key holds the actual durable insight (one per real fix). Sanity/review beads get "nothing novel" — the parent insight covers them.
+
 ## What Stays Out
 
 - `memory-processor` — memory synthesis specialist; see `/documenting`.
 - `xt-merge`: deferred to xt-merge skill; this skill names specialist flow, not merge-wrapper internals.
+- Session-close reporting (report skeleton, CHANGELOG sync, push) — see `/session-close-report` skill; this skill mandates running it at session end but does not duplicate its content.
+- Release publication (version bump, build, tag, npm publish) — see `/releasing` skill.
+
+## At Session End — Mandatory Handoff
+
+Before declaring the session done:
+
+1. Run the `/session-close-report` skill.
+2. Fill every `<!-- FILL -->` marker in the generated skeleton.
+3. Sync `CHANGELOG.md` for user-facing changes (the report skill drives this).
+4. Re-run cleanup checks: `sp ps`, `git worktree list`, `ps -ef` for stale serena/gitnexus, `tmux ls` for `sp-*`.
+5. Commit the report (and CHANGELOG if updated) before push.
+
+A session that lands code but skips the close-report leaves the next agent cold-starting blind. That cost compounds across sessions.
 
 ## Adjacent xt commands
 
@@ -511,27 +882,146 @@ Source: latest xt report + `xt --help`; keep commands here, not full CLI surface
 
 ## Merge And Publication
 
-Standalone chain:
+Per-chain merge (works for standalone chains AND for any PASS chain inside an active epic):
 
 ```bash
 sp merge <chain-root-bead>
 ```
 
-Epic-owned chains:
+Batch publish all chains in an epic in dependency order with tsc gate between each:
 
 ```bash
 sp epic status <epic-id>
 sp epic merge <epic-id>
 ```
 
+Manual finalizer fallback when reviewer PASS arrived via resume (auto-finalize only fires on streaming output):
+
+```bash
+sp finalize <any-chain-job-id>     # cascades: closes ALL waiting keep-alive members of the chain
+```
+
 Rules:
 
 - Merge only after reviewer PASS unless operator explicitly accepts draft for follow-up work.
-- Use `sp epic merge` for unresolved epic chains; `sp merge` refuses those by design.
-- Do not manually `git merge` specialist branches.
-- If merge refuses because chain job is still `waiting`, consume result and either resume/stop/finalize that job deliberately.
+- Per-chain `sp merge` is allowed for any PASS chain regardless of sibling-epic state. Use `sp epic merge` only when batching all epic chains together (atomic publish, topological order, tsc gate per merge).
+- Do not manually `git merge` specialist branches — the redesign removed the conditions that previously forced manual fallback (sticky FAILED, inverted merge gates, missing PASS finalizer).
+- If merge refuses because a chain job is still `waiting`, run `sp finalize <any-job-in-chain>` — it cascades to close every waiting keep-alive member of that chain via `supervisor.finalizeWaitingJob()`.
+- If a previous `sp epic merge` failed (rebase conflict, dirty worktree) and persisted a soft `failed` marker, the next attempt retries fresh — only `merged` and `abandoned` are truly terminal. Just clear the conflict source.
 - If merge reports dirty worktree, inspect that worktree. Revert generated noise only when clearly unrelated; otherwise ask or re-dispatch.
 - Run or confirm required gates before closing root bead or epic.
+
+## Integration Phase — Cherry-Pick Playbook
+
+Use when `sp merge` / `sp epic merge` is not the right path: chains forked from a non-`origin/HEAD` baseline (pass `--target-branch` first if it's a known integration branch), operator wants visibility before publish, or multiple chains must land into an integration branch before main.
+
+### Step-by-step
+
+1. Stash uncommitted state on working branch: `git stash push -u -m "pre-integration"`.
+2. Create integration branch off the working branch: `git checkout -b integration/<date>-orchestrator`.
+3. For each non-overlapping chain (security/critical first, then test-baseline, then features):
+   - `git merge --squash <chain-branch>`
+   - Restore noise files (see "Chain noise filter checklist" below)
+   - **Advisory passes** before commit: if the staged diff smells overcomplicated/duplicative/type-risky, dispatch `code-sanity --job <last-exec-job-of-chain>`; if it touches auth/secrets/input/agent-config, dispatch `security-auditor --job <last-exec-job-of-chain>`. Apply findings or document why skipped.
+   - `git commit -m "<type>(<scope>): <summary> (<bead-id>)"` — one squash commit per chain.
+4. For each overlapping chain, switch to the **debugger-restitch** pattern (next section).
+5. After all chains land, run E2E smoke phase (below) before declaring done.
+6. Operator FF-merges integration → main when satisfied.
+
+### Chain noise filter checklist
+
+`sp merge` ignores `.beads/` and `.xtrm/skills/active/**` via `MERGE_DIRTY_IGNORE_PREFIXES`. For manual cherry-pick / squash flows, additionally unstage these before committing:
+
+- `.pi/npm` — accidentally created by xt commands inside worktrees
+- `cli/pnpm-lock.yaml`, `cli/pnpm-workspace.yaml` — pnpm side-effects
+- `AGENTS.md`, `CLAUDE.md` — gitnexus stat-refresh hook noise
+- `.beads/issues.jsonl`, `.beads/interactions.jsonl` — bd state churn
+- `.specialists/executor-result.md` — transient specialist output
+
+```bash
+git restore --staged .beads .pi AGENTS.md CLAUDE.md
+git checkout HEAD -- .beads AGENTS.md CLAUDE.md
+rm -f .pi/npm
+```
+
+If a chain commits its own `.beads` symlink (older bd-in-worktree behavior), `rm -f .beads` then `git checkout HEAD -- .beads` to restore the real directory.
+
+## Debugger-Restitch Pattern
+
+When chain X conflicts with already-landed chain Y on shared files, raw `git cherry-pick` will revert Y's work. The debugger-restitch pattern preserves both, but only when the debugger gets an explicit "preserve already-landed work" contract.
+
+1. **Reopen X**: `bd reopen <X> --reason="integration stitch onto post-Y state"`.
+2. **Strengthen the bead contract** with these fields:
+   - `## CRITICAL CONSTRAINTS:` heading at the top.
+   - "Fork off `integration/<date>-orchestrator`. Verify with `git log integration/...$..HEAD` empty before any commits."
+   - List the symbols/lines from Y that MUST be preserved verbatim (with file paths).
+   - "ADD X's intent ON TOP" with a numbered list of the additions.
+   - "Reference original `feature/<X>-executor` for symbol shapes only — do NOT cherry-pick or merge. Re-implement on integration's current state."
+   - `## VALIDATION:` includes both Y's tests passing AND X's new tests passing.
+   - `## OUTPUT:` mandates a 5-line code excerpt showing both Y and X features coexisting.
+3. **Dispatch debugger** with `--force-stale-base` if X is an epic child:
+   ```bash
+   sp run debugger --bead <X> --force-stale-base --keep-alive --background
+   ```
+4. **Sanity check the result**: when debugger reports back:
+   ```bash
+   git log integration/<date>..feature/<X>-debugger --oneline
+   git diff integration/<date>...feature/<X>-debugger -- <key-files>
+   ```
+   Confirm the debugger's diff is **additive** — no reverts of Y's lines.
+5. **Advisory passes**: before landing the restitch, dispatch `code-sanity --job <debugger-job>` if the restitch added control-flow complexity, and `security-auditor --job <debugger-job>` if it touched a sensitive surface. Restitched diffs are higher-risk than fresh executor diffs because the debugger had to thread around already-landed work.
+6. **Land via FF or cherry-pick the named commit** (NOT the checkpoint commit). Look for the commit with the proper `<type>(<scope>):` message; ignore `checkpoint(debugger):` commits above it.
+7. **Verify tests** before marking done.
+
+### Failure mode to watch for
+
+If the debugger forks off the OLD baseline (pre-Y) instead of integration, its commit will revert Y. Symptom: `git diff integration..feature/<X>-debugger -- <Y's-file>` shows DELETIONS of Y's symbols. Fix: resume the debugger with explicit "cd to a fresh worktree forked from `integration/<date>-orchestrator`" instruction. Re-verify with `git log integration..HEAD` empty.
+
+## E2E Smoke Phase
+
+Run **every** npm script + entry point that any chain added or modified. The smoke phase is the only way to catch missed chains, false-positive CI gates, missing intermediate files, and runtime regressions invisible to unit tests.
+
+### Procedure
+
+```bash
+# Build sanity
+bun run build   # or equivalent
+
+# Test sanity — record PRE-baseline first
+git checkout <baseline-branch>
+bun test 2>&1 | tail -5   # record N failed / M passed
+
+# Switch back and re-run
+git checkout integration/<date>-orchestrator
+bun test 2>&1 | tail -5   # MUST be ≥ baseline. Net regression is a stop-the-line.
+
+# Run every check:* script the integration added
+for s in $(jq -r '.scripts | keys[] | select(startswith("check:"))' package.json); do
+  echo "=== $s ==="
+  npm run "$s" 2>&1 | tail -10
+done
+
+# Targeted unit tests for chains touching the same files
+bunx vitest run <chain-test-files>
+```
+
+For each smoke that fails, decide before continuing:
+- False positive (script flags itself) → file follow-up bead, document, continue
+- Missing dependency (vendor not run) → expected gate, document
+- Real regression → stop, dispatch debugger to fix, re-smoke
+
+### Cross-cutting security-auditor pass
+
+If any landed chain in this integration touched auth, secrets, input handling, dependency lockfiles, or agent/MCP/config surfaces, dispatch one `security-auditor` on the cumulative integration diff BEFORE declaring smoke done:
+
+```bash
+git diff <baseline>..integration/<date>-orchestrator > /tmp/integration-diff.patch
+sp run security-auditor --bead <sec-bead> --context-depth 3 --background
+```
+
+Per-chain security-auditor passes catch chain-local risks; this cross-cutting pass catches interaction risks that only appear once all chains coexist (e.g. one chain weakens an input validator that another newly relies on). Skipping this on a sensitive-surface integration is an escalation event.
+
+Record all smoke results in the session-close-report under a `## Smoke test results` table (see `/session-close-report` skill).
 
 ## Failure Recovery
 
@@ -552,6 +1042,22 @@ Then choose one action:
 - Escalate if human decision is needed.
 - Replace specialist only if failure mode repeats.
 
+### Common failure patterns (and the canonical fix)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `sp merge` refuses with "non-terminal chain jobs" after reviewer PASS | Auto-finalize did not fire (PASS arrived via `sp resume`, not streaming) | `sp finalize <any-chain-job-id>` — cascades to close every waiting keep-alive member |
+| `sp epic merge` says epic is "in terminal state 'failed'" | Prior `sp epic merge` hit a transient error (rebase conflict, dirty worktree) and persisted a soft `failed` marker | Clear the original conflict source, then re-run `sp epic merge` — it retries fresh, only `merged`/`abandoned` truly block |
+| `sp epic merge` says "rebase failed: unstaged changes" in a worktree | bd auto-export or other tooling left uncommitted changes inside the worktree | `cd .worktrees/<bead>/<bead>-executor && git stash push -u -m epic-merge-prep`, then re-run from main repo |
+| Validation fails with `command not found`, `vitest: not found`, missing Python tools, or `ERR_MODULE_NOT_FOUND` in a fresh worktree | Normal git worktree behavior: ignored dependency dirs (`node_modules/`, `.venv/`) are not copied into new worktrees | Run the repo's standard bootstrap inside that worktree (`make bootstrap`, `just setup`, `npm ci`, `uv sync`, etc.) or report bootstrap-required. Do not track dependency artifacts. |
+| `sp ps` shows old terminal jobs after a session | Default dashboard keeps unresolved terminal problems visible until acknowledged | `sp clean --ps --dry-run`, then `sp clean --ps` to soft-hide from default ps; use `sp ps --include-cleaned`/`--all` for audit history |
+| Reviewer keeps returning PARTIAL on functional contracts already met | Reviewer demanding tool-event evidence — typically obsoleted after the gate relaxation, but if it persists check the executor's `gitnexus_detect_changes` ran and use the rebuttal pattern (see Specialist Rebuttal As Routine) | Rebut with cited evidence; second FAIL = escalate |
+| Multiple `sp run` background launches drop silently under shell parallelism | Known launch-ceremony race | Re-check `sp ps` after each dispatch and retry the missing one; serialize when reliability matters |
+| `sp run` returns `Warning: job started but ID not yet available` and nothing appears in `sp ps --bead <id>` after 30s | Dispatch was refused by epic guard or base-staleness check; stderr now surfaces the refusal reason (see `sp run --background` post-fix) | Read the surfaced reason; retry with `--force-stale-base` if intentional, or fix the bead/lineage |
+| `sp feed <job-id>` returns short tail with no tool events | Confirms DB-backed replay is active; if you see ≤10 lines on a real run, the DB is missing events for that job — verify with raw SQL on observability.db | If DB truly lacks events: re-run job; if DB has events but feed truncates: file bug bead — should not happen on current build |
+| bd "database not found" or per-project Dolt server respawn | bd has spawned a per-project Dolt instead of routing to the shared server | `ps aux \| grep "<repo>/.beads/dolt" \| awk '{print $2}' \| xargs -r kill -9`; ensure `.beads/config.yaml` contains `dolt.shared-server: true`; `bd ready` should now route to `~/.beads/shared-server/` |
+| Dolt journal corruption (`possible data loss detected at offset N`) | bd-internal | Operator-only — do NOT auto-recover. Stop bd writes, snapshot `~/.beads/shared-server/dolt`, run `dolt fsck` (read-only) first. Operator decides on `--revive-journal-with-data-loss` after reviewing the warning |
+
 ## What Orchestrator Does Differently Because Of This Skill
 
 - Writes bead contract before dispatch.
@@ -559,4 +1065,11 @@ Then choose one action:
 - Uses specialist role by job shape, not by habit.
 - Keeps fix loops alive with resume, not re-spawn.
 - Treats reviewer PASS as only publish gate.
-- Keeps memory-processor and xt-merge out of this skill on purpose.
+- Maps file-overlap surface BEFORE dispatching parallel waves.
+- Files one READ_ONLY test-failure-map bead before fix chains when ≥5 failures span subsystems.
+- Uses overthinker and reviewer as conversation, not one-shot oracles — rebuts with cited evidence once, then escalates.
+- Smokes every npm script and entry point before declaring integration done; runs cross-cutting security-auditor on cumulative diff when sensitive surfaces were touched.
+- Commits debugger-restitch results via FF or cherry-pick of the named commit, not the checkpoint commit above it.
+- Closes finished chain's bead BEFORE committing that worktree when other chains still in_progress (project-wide commit-gate).
+- Runs `/session-close-report` at session end and only then declares done.
+- Keeps memory-processor, xt-merge, session-close-report, and releasing out of this skill on purpose — each has its own.

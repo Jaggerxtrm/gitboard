@@ -86,7 +86,14 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
 
   const onIssueSelect = useCallback(async (issue: BeadIssue) => {
     if (!state.project) return;
+    if (selectedId === issue.id) {
+      setSelectedId(null);
+      setDetail(null);
+      setLoadingDetailId(null);
+      return;
+    }
     setSelectedId(issue.id);
+    setDetail(null);
     setLoadingDetailId(issue.id);
     try {
       const d = await beadsApi.getIssue(state.project.id, issue.id);
@@ -94,7 +101,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     } finally {
       setLoadingDetailId(null);
     }
-  }, [state.project]);
+  }, [selectedId, state.project]);
 
   if (state.loading) return <BeadsSkeleton />;
   if (state.error) {
@@ -107,7 +114,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
   }
   if (!state.project) return null;
 
-  const issueById = new Map(state.issues.map((i) => [i.id, i]));
+  const issueById = new Map([...state.issues, ...state.closedIssues].map((i) => [i.id, i]));
   const selectedIssue = selectedId ? issueById.get(selectedId) : null;
 
   return (
@@ -121,7 +128,8 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
       )}
       {tab === "feed" && (
         <IssueFeed
-          issues={[...state.issues, ...state.closedIssues]}
+          issues={state.issues}
+          closedIssues={state.closedIssues}
           selectedIssueId={selectedId}
           selectedIssueDetail={detail}
           loadingDetailId={loadingDetailId}
@@ -140,7 +148,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
         <MemoriesPanel memories={state.memories} />
       )}
 
-      {tab !== "kanban" && selectedIssue && (
+      {tab !== "kanban" && tab !== "feed" && selectedIssue && (
         <IssueOverlay
           issue={selectedIssue}
           detail={detail}
