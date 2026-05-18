@@ -8,6 +8,8 @@ import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
+import { createObservabilityWatcher } from "../server/observability/watcher.ts";
+import { listRepos } from "../server/observability/registry.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -16,6 +18,7 @@ export interface ServerOptions {
 
 let currentRegistry: ChannelRegistry | null = null;
 let currentWatcher: BeadsChangeWatcher | null = null;
+let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
@@ -36,6 +39,9 @@ export function createApp(db: Database): {
   const wsHandler = new WsHandler(registry);
   currentWatcher = new BeadsChangeWatcher({ registry });
   currentWatcher.start();
+  currentObservabilityWatcher?.stop();
+  currentObservabilityWatcher = createObservabilityWatcher(listRepos());
+  currentObservabilityWatcher.start();
 
   app.use("*", cors());
 
@@ -86,7 +92,7 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
 
   const { app, wsHandler } = createApp(db);
 
-  Bun.serve({
+  const server = Bun.serve({
     port,
     hostname,
     fetch(req, server) {
@@ -118,6 +124,9 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
       },
     },
   });
+
+  const stopObservability = currentObservabilityWatcher;
+  process.once("exit", () => stopObservability?.stop());
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
   console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
