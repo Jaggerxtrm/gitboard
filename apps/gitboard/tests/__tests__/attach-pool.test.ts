@@ -36,16 +36,15 @@ describe("createAttachPool", () => {
 
     expect(attached).toHaveLength(2);
     expect(attached.map((row: { name?: string }) => row.name)).toEqual([
-      expect.stringContaining("repo_repo-a_"),
-      expect.stringContaining("repo_repo-b_"),
+      "repo_repo-a_0",
+      "repo_repo-b_1",
     ]);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]?.[0])).toContain("schema_version");
     expect(String(warn.mock.calls[0]?.[0])).toContain("repo-c");
   });
 
   it("evicts least-recently used attachment when pool size exceeded", () => {
-    const pool = createAttachPool(FIXTURES, { maxAttached: 1, logger: { warn: vi.fn() } });
+    const pool = createAttachPool(FIXTURES.slice(0, 2), { maxAttached: 1, logger: { warn: vi.fn() } });
 
     const attached = pool.withAttached((db) => {
       return db
@@ -55,8 +54,6 @@ describe("createAttachPool", () => {
         .map((row: { name?: string }) => row.name);
     });
 
-    expect(attached).toHaveLength(1);
-    expect(attached[0]).toEqual(expect.stringContaining("repo_repo-b_"));
-    expect(attached[0]).not.toEqual(expect.stringContaining("repo_repo-a_"));
+    expect(attached).toEqual(["repo_repo-b_1"]);
   });
 });

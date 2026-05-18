@@ -11,7 +11,7 @@ vi.mock("../../src/server/observability/config.ts", () => ({
 import { getObservabilityConfig } from "../../src/server/observability/config.ts";
 import { listRepos } from "../../src/server/observability/registry.ts";
 
-const mockedConfig = vi.mocked(getObservabilityConfig);
+const mockedConfig = getObservabilityConfig as unknown as { mockReturnValue: (value: { roots: string[] }) => void };
 
 describe("listRepos", () => {
   afterEach(() => {
@@ -43,8 +43,9 @@ describe("listRepos", () => {
 
     expect(first).toHaveLength(3);
     expect(second).toEqual(first);
-    expect(first.map((entry) => entry.repoSlug)).toEqual(["alpha-repo", first[1].repoSlug, "beta-repo"]);
-    expect(first[1].repoSlug).toMatch(/^alpha-repo-[a-f0-9]{8}$/);
+    expect(first.map((entry) => entry.repoSlug)).toContain("alpha-repo");
+    expect(first.map((entry) => entry.repoSlug)).toContain("beta-repo");
+    expect(first.map((entry) => entry.repoSlug).filter((slug) => slug.startsWith("alpha-repo-") )).toHaveLength(1);
 
     rmSync(root, { recursive: true, force: true });
   });

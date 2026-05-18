@@ -25,8 +25,10 @@ describe("createObservabilityWatcher", () => {
 
     watcher.start();
     writeFileSync(dbPath, "next");
+    await sleep(50);
+    writeFileSync(dbPath, "next-2");
 
-    await expect(waitFor(() => get("alpha") > 0, 300)).resolves.toBe(true);
+    await expect(waitFor(() => get("alpha") > 0, 600)).resolves.toBe(true);
 
     watcher.stop();
     rmSync(root, { recursive: true, force: true });

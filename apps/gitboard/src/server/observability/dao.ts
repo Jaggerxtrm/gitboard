@@ -6,23 +6,24 @@ const JOB_COLUMNS = "bead_id, chain_id, epic_id, chain_kind, status, updated_at_
 
 export function createObservabilityDao(pool: AttachPoolLike) {
   return {
-    jobsByBead: (beadId: string) => readJobs(pool, `WHERE bead_id = ? ORDER BY updated_at_ms DESC`, [beadId]),
-    inFlightJobs: () => readJobs(pool, `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")}) ORDER BY updated_at_ms DESC`, [...IN_FLIGHT_STATUSES]),
-    chainById: (chainId: string) => readJobs(pool, `WHERE chain_id = ? ORDER BY updated_at_ms ASC`, [chainId]) as SpecialistChain[],
-    epicById: (epicId: string) => readJobs(pool, `WHERE epic_id = ? ORDER BY updated_at_ms ASC`, [epicId]) as EpicRun[],
+    jobsByBead: (beadId: string) => readJobs(pool, `WHERE bead_id = ?`, `ORDER BY updated_at_ms DESC`, [beadId]),
+    inFlightJobs: () => readJobs(pool, `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, `ORDER BY updated_at_ms DESC`, [...IN_FLIGHT_STATUSES]),
+    chainById: (chainId: string) => readJobs(pool, `WHERE chain_id = ?`, `ORDER BY CASE chain_kind WHEN 'executor' THEN 0 WHEN 'reviewer' THEN 1 ELSE 2 END, updated_at_ms ASC`, [chainId]) as SpecialistChain[],
+    epicById: (epicId: string) => readJobs(pool, `WHERE epic_id = ?`, `ORDER BY updated_at_ms ASC`, [epicId]) as EpicRun[],
   };
 }
 
-function readJobs(pool: AttachPoolLike, whereSql: string, params: readonly string[]): SpecialistJob[] {
+function readJobs(pool: AttachPoolLike, whereSql: string, orderSql: string, params: readonly string[]): SpecialistJob[] {
   return pool.withAttached((db) => {
     const attached = listAttachedRepos(db);
     if (attached.length === 0) return [];
 
-    const query = attached
-      .map(({ name, slug }) => `SELECT '${escapeSql(slug)}' AS repoSlug, ${JOB_COLUMNS} FROM ${name}.specialist_jobs ${whereSql}`)
-      .join(" UNION ALL ");
+    const rows = attached.flatMap(({ name, slug }) => {
+      // chain_kind precedence preserves executor before reviewer, then updated_at_ms ASC.
+      const query = `SELECT '${escapeSql(slug)}' AS repoSlug, ${JOB_COLUMNS} FROM "${escapeSql(name)}".specialist_jobs ${whereSql} ${orderSql}`;
+      return db.prepare(query).all(...params) as Array<Record<string, unknown>>;
+    });
 
-    const rows = db.prepare(query).all(...params) as Array<Record<string, unknown>>;
     return rows.map(mapRow);
   });
 }

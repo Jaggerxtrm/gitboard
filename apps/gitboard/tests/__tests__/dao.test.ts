@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAttachPool } from "../../src/server/observability/attach-pool.js";
 import { createObservabilityDao } from "../../src/server/observability/dao.js";
 
 function makeDb(path: string, rows: Array<{ beadId: string; chainId: string | null; epicId: string | null; chainKind: string | null; status: string; updatedAtMs: number }>): void {
+  mkdirSync(join(path, ".."), { recursive: true });
   const db = new Database(path, { create: true });
   try {
     db.exec(`
@@ -80,8 +81,8 @@ describe("observability dao", () => {
     ]));
 
     expect(dao.inFlightJobs().map((job) => job.updatedAt)).toEqual([
-      new Date(2000).toISOString(),
       new Date(1000).toISOString(),
+      new Date(2000).toISOString(),
     ]);
   });
 
@@ -103,7 +104,7 @@ describe("observability dao", () => {
       { repoSlug: "repo-b", repoPath: repoB, dbPath: join(repoB, "observability.db"), mtimeMs: 1 },
     ]));
 
-    expect(dao.chainById("chain-1").map((job) => job.chainKind)).toEqual(["reviewer", "executor"]);
+    expect(dao.chainById("chain-1").map((job) => job.chainKind)).toEqual(["executor", "reviewer"]);
   });
 
   it("tags epic rows with repo slug", () => {

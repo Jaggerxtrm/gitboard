@@ -1,5 +1,5 @@
 import { watch, statSync, type FSWatcher } from "node:fs";
-import { dirname, basename, join } from "node:path";
+import { dirname, basename } from "node:path";
 import type { RepoEntry } from "./registry.ts";
 import { bump } from "./epoch.ts";
 
@@ -12,7 +12,7 @@ type WatchOptions = {
 
 type WatchedRepo = {
   entry: RepoEntry;
-  watcher: FSWatcher;
+  watchers: FSWatcher[];
   timer: ReturnType<typeof setTimeout> | null;
   lastMtimeMs: number;
 };
@@ -41,7 +41,7 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
     stopped = true;
     for (const repo of watched.values()) {
       if (repo.timer) clearTimeout(repo.timer);
-      repo.watcher.close();
+      for (const watcher of repo.watchers) watcher.close();
     }
     watched.clear();
   }
@@ -52,10 +52,11 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
       if (filename !== basename(entry.dbPath)) return;
       scheduleBump(entry);
     });
+    const fileWatcher = watch(entry.dbPath, { persistent: false }, () => scheduleBump(entry));
 
     watched.set(entry.repoSlug, {
       entry,
-      watcher,
+      watchers: [watcher, fileWatcher],
       timer: null,
       lastMtimeMs: entry.mtimeMs,
     });
