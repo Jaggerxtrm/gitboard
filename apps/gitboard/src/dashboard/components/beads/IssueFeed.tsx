@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRightIcon, ChevronDownIcon, GitBranchIcon, LinkIcon, AlertIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
+import { ChevronRightIcon, ChevronDownIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { beadsApi as api } from "../../lib/beads-api.ts";
 import { SpecialistOwnerBadgeForBead } from "./SpecialistOwnerBadge.tsx";
