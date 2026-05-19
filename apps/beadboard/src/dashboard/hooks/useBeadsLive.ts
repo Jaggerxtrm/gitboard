@@ -58,7 +58,7 @@ export function useBeadsLive(): void {
         case "beads:kv.delete": removeKv(msg.data.key ?? ""); break;
         case "beads:batch": applyBatch({ upserts: msg.data.issues, closes: msg.data.closes, deletes: msg.data.deletes, dependencies: msg.data.dependencies, memories: msg.data.memories, kv: msg.data.kv }); break;
         case "beads:sync_hint": applySyncHint(msg.projectId, msg.data.scope); break;
-        case "beads:source_health": setSourceHealth(msg.projectId, [{ kind: msg.data.source as "dolt" | "sqlite" | "jsonl" | "unknown", state: msg.data.healthy === false ? "unhealthy" : "available", detail: msg.data.drift ? "drift" : undefined }]); break;
+        case "beads:source_health": setSourceHealth(msg.projectId, msg.data.health); break;
       }
     };
     return () => ws.close();

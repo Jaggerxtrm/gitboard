@@ -32,7 +32,7 @@ describe("BeadCard specialist badge", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        new Response(JSON.stringify({ jobs: [{ role: "executor", state: "running", repoSlug: "repo-a" }] }), {
+        new Response(JSON.stringify({ jobs: [{ jobId: "abcdef0123", specialist: "executor", status: "running", repoSlug: "repo-a" }] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
@@ -41,9 +41,8 @@ describe("BeadCard specialist badge", () => {
 
     render(<BeadCard issue={issue} />);
 
-    expect(await screen.findByText("executor")).toBeInTheDocument();
-    expect(screen.getByText("running")).toBeInTheDocument();
-    expect(screen.getByText("repo-a")).toBeInTheDocument();
+    // New chip format: "role:jobId·state"
+    expect(await screen.findByText(/^executor:abcdef·running$/)).toBeInTheDocument();
   });
 
   it("renders no badge when jobs empty", async () => {

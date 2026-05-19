@@ -1,6 +1,8 @@
 import { Hono } from "hono";
-import { getDoltHealthSnapshot } from "../../../../beadboard/src/core/dolt-client.ts";
 
+// PR#10 reshaped beadboard's dolt-client (forge-1qz pool snapshot removed in favor of
+// per-project ProjectSourceHealth). This endpoint now returns a minimal liveness
+// payload until a follow-up reintroduces a pool snapshot if needed.
 export function createInternalDoltHealthRouter(): Hono {
   const app = new Hono();
 
@@ -10,16 +12,9 @@ export function createInternalDoltHealthRouter(): Hono {
       return c.json({ error: "forbidden" }, 403);
     }
 
-    const snapshot = getDoltHealthSnapshot();
     return c.json({
-      pool_size: 4,
-      idle_timeout_ms: 60_000,
-      probe_interval_ms: 5_000,
-      breaker_threshold: 5,
-      backoff_min_ms: 250,
-      backoff_max_ms: 30_000,
-      query_timeout_ms: 3_000,
-      ...snapshot,
+      state: "ok",
+      note: "Pool snapshot retired in PR#10; see /api/beads/projects for per-project source health.",
     });
   });
 
