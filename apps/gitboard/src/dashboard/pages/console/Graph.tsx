@@ -12,7 +12,10 @@ export function Graph() {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
 
   const layout = useMemo(() => (data ? layoutGraph(data.nodes, data.edges) : null), [data]);
-  const specialists = useMemo(() => new Set(data?.specialists.map((item) => item.bead_id) ?? []), [data]);
+  const runningBeadIds = useMemo(
+    () => new Set((data?.specialists ?? []).filter((specialist) => specialist.status === "running").map((specialist) => specialist.bead_id)),
+    [data],
+  );
 
   useEffect(() => {
     const onReset = () => setTransform({ x: 0, y: 0, scale: 1 });
@@ -51,7 +54,7 @@ export function Graph() {
         }}
       >
         <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
-          <GraphSvg nodes={layout.nodes} edges={layout.edges} specialists={specialists} onNodeClick={onNodeClick} />
+          <GraphSvg nodes={layout.nodes} edges={layout.edges} specialists={runningBeadIds} onNodeClick={onNodeClick} />
         </g>
       </svg>
     </div>
