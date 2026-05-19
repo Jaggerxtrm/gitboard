@@ -13,6 +13,7 @@ import {
 import type { GithubEvent, GithubCommit, GithubPr, GithubIssue, GithubRepo } from "./github-store.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
 import type { GithubRealtimeEvent } from "../types/realtime.ts";
+import { emit, makeLogEntry } from "./logger.ts";
 
 export interface RawGithubCommit {
   sha: string;
@@ -220,6 +221,7 @@ export class GithubPoller {
     if (!rate) return false;
     if (rate.remaining < 500) {
       this.pausedUntil = Date.now() + 60_000;
+      emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { remaining: rate.remaining, limit: rate.limit, pausedUntil: this.pausedUntil }));
       return true;
     }
     if (this.pausedUntil > 0 && rate.remaining > rate.limit * 0.8) {
@@ -252,8 +254,14 @@ export class GithubPoller {
     } catch {
       return null;
     }
-    if (response.status === 304) return null;
-    if (!response.ok) return null;
+    if (response.status === 304) {
+      emit(makeLogEntry("poller", "etag.hit_304", "debug", undefined, { repo, endpoint }));
+      return null;
+    }
+    if (!response.ok) {
+      emit(makeLogEntry("poller", "etag.miss", "debug", undefined, { repo, endpoint, status: response.status }));
+      return null;
+    }
     this.maybePauseForRateLimit(response);
     this.rememberEtag(repo, endpoint, response);
     return (await response.json()) as T;
@@ -633,6 +641,8 @@ const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&s
 
   async backfill(username: string): Promise<void> {
     console.log(`[github-poller] Backfilling user events for ${username} (up to ${this.backfillPages} pages)`);
+    const startedAt = Date.now();
+    emit(makeLogEntry("poller", "cycle.start", "info", undefined, { username, phase: "backfill" }));
 
     for (let page = 1; page <= this.backfillPages; page++) {
       const url = `https://api.github.com/users/${username}/events?per_page=100&page=${page}`;
@@ -659,17 +669,22 @@ const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&s
     if (repos.length > 0) {
       await this.backfillPrsAndIssues(repos.map((r) => r.full_name));
     }
+    emit(makeLogEntry("poller", "cycle.complete", "info", undefined, { username, phase: "backfill", repos: repos.length, durationMs: Date.now() - startedAt }));
   }
 
   start(username: string): void {
     if (this.timer) return;
     console.log(`[github-poller] Starting poll loop for ${username}, interval=${this.intervalMs}ms`);
     this.timer = setInterval(async () => {
+      const startedAt = Date.now();
+      emit(makeLogEntry("poller", "cycle.start", "info", undefined, { username, phase: "poll" }));
       try {
         await this.pollUser(username);
         await this.pollRepos();
+        emit(makeLogEntry("poller", "cycle.complete", "info", undefined, { username, phase: "poll", durationMs: Date.now() - startedAt }));
       } catch (err) {
         console.error(`[github-poller] Error polling GitHub:`, err);
+        emit(makeLogEntry("poller", "error", "error", "poll loop failed", { error: (err as Error).message }));
       }
     }, this.intervalMs);
   }

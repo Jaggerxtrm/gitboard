@@ -5,6 +5,7 @@
 import mysql from "mysql2/promise";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import type { BeadIssue, BeadDependency, IssueFilters, BeadIssueDetail } from "../types/beads.ts";
+import { emit, makeLogEntry } from "../../../gitboard/src/core/logger.ts";
 
 const POOL_SIZE = 4;
 const IDLE_TIMEOUT_MS = 60_000;
@@ -103,6 +104,7 @@ export class DoltClient {
 
   async connect(): Promise<void> {
     if (this.connected) return;
+    emit(makeLogEntry("dolt", "reconnect.attempt", "info", undefined, { host: this.config.host, port: this.config.port }));
     await this.ensurePool();
   }
 
@@ -219,6 +221,7 @@ export class DoltClient {
       keepAliveInitialDelay: 0,
     });
     runtime.connected = true;
+    emit(makeLogEntry("dolt", "reconnect.recovered", "info", undefined, { host: this.config.host, port: this.config.port }));
     this.ensureProbeLoop();
     return runtime.pool;
   }
@@ -253,6 +256,7 @@ export class DoltClient {
     if (runtime.consecutiveFailures >= BREAKER_THRESHOLD) {
       runtime.breakerOpenUntil = Date.now() + backoffDelay(runtime.consecutiveFailures);
       runtime.reconnectAttempts = Math.max(runtime.reconnectAttempts, runtime.consecutiveFailures - BREAKER_THRESHOLD + 1);
+      emit(makeLogEntry("breaker", "breaker.opened", "warn", undefined, { consecutiveFailures: runtime.consecutiveFailures, breakerOpenUntil: runtime.breakerOpenUntil }));
     }
   }
 
@@ -265,7 +269,9 @@ export class DoltClient {
     const startedAt = performance.now();
     try {
       const result = await withTimeout(pool.execute<T>(sql, params as any[]), QUERY_TIMEOUT_MS);
-      rememberMetric(performance.now() - startedAt, true);
+      const latency = performance.now() - startedAt;
+      rememberMetric(latency, true);
+      if (latency > 100) emit(makeLogEntry("dolt", "query.slow", "warn", undefined, { latencyMs: latency }));
       runtime.consecutiveFailures = 0;
       return result;
     } catch (error) {

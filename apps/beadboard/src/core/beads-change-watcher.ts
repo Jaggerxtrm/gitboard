@@ -5,6 +5,7 @@ import type { BeadDependency, BeadIssue, BeadsProject, Memory } from "../types/b
 import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
+import { emit, makeLogEntry } from "../../../gitboard/src/core/logger.ts";
 
 const ACTIVE_POLL_MS = 2_000;
 const IDLE_POLL_MS = 10_000;
@@ -23,6 +24,7 @@ export class BeadsChangeWatcher {
   private previous = new Map<string, Snapshot>();
   private lastCommitHash = new Map<string, string>();
   private queue: PendingEvent[] = [];
+  private lastHealth = new Map<string, boolean>();
 
   constructor(private readonly options: { scanner?: ProjectScanner; registry: ChannelRegistry }) {}
 
@@ -68,6 +70,7 @@ export class BeadsChangeWatcher {
     // readSnapshot (which would otherwise SELECT up to 1000 rows + 3 batched
     // IN-clause hydration queries per project per 2s on a stable repo).
     if (commitHash && prevHash === commitHash && haveSnapshot) {
+      emit(makeLogEntry("watcher", "poll.skipped", "debug", undefined, { projectId: project.id }));
       this.enqueue({
         projectId: project.id,
         source: "dolt",
@@ -78,13 +81,21 @@ export class BeadsChangeWatcher {
       return;
     }
 
+    emit(makeLogEntry("watcher", "poll.snapshot_read", "info", undefined, { projectId: project.id }));
     const snapshot = await this.readSnapshot(project);
     const previous = this.previous.get(project.id);
     const drift = Boolean(previous && previous.issues.length !== snapshot.issues.length);
     this.previous.set(project.id, snapshot);
     if (commitHash) this.lastCommitHash.set(project.id, commitHash);
+    const healthy = Boolean(commitHash);
+    const priorHealthy = this.lastHealth.get(project.id);
+    if (priorHealthy !== healthy) {
+      this.lastHealth.set(project.id, healthy);
+      emit(makeLogEntry("watcher", "source_health.changed", "info", undefined, { projectId: project.id, healthy, source: commitHash ? "dolt" : "jsonl" }));
+    }
     else this.lastCommitHash.delete(project.id);
-    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { projectId: project.id, source: commitHash ? "dolt" : "jsonl", drift, healthy: Boolean(commitHash) } });
+    if (drift) emit(makeLogEntry("watcher", "drift.detected", "warn", undefined, { projectId: project.id }));
+    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { projectId: project.id, source: commitHash ? "dolt" : "jsonl", drift, healthy } });
     this.diffAndQueue(project.id, previous, snapshot, commitHash ?? String(Date.now()));
   }
 
@@ -124,6 +135,7 @@ export class BeadsChangeWatcher {
     this.flushTimer = null;
     const batch = this.queue.splice(0, this.queue.length);
     if (batch.length === 0) return;
+    emit(makeLogEntry("watcher", "batch.published", "info", undefined, { count: batch.length }));
     if (overflow || batch.length > MAX_BATCH) {
       this.registry.publish("beads:changes", "beads:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
       return;
