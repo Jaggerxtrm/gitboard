@@ -34,7 +34,6 @@ function MetricTable({ title, columns, rows }: { title: string; columns: Array<s
   const widths = useMemo(() => columns.map(() => 1 / columns.length), [columns.length]);
   return (
     <section style={sectionStyle}>
-      <div style={kickerStyle}>{title}</div>
       <div style={tableStyle}>
         <div style={rowStyle}>
           {columns.map((col, i) => <Cell key={col} value={col} header width={widths[i]} />)}
