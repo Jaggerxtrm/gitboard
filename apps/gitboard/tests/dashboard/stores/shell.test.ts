@@ -14,6 +14,7 @@ describe("shell store drawer persistence", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal("localStorage", makeStorage());
+    vi.stubGlobal("window", { innerHeight: 800 } as typeof window);
   });
 
   it("persists drawer state and rehydrates", async () => {
@@ -34,6 +35,11 @@ describe("shell store drawer persistence", () => {
     useShellStore.getState().setDrawerHeight(10);
     expect(useShellStore.getState().drawerHeight).toBe(120);
     useShellStore.getState().setDrawerHeight(999);
+    expect(useShellStore.getState().drawerHeight).toBe(700);
+  });
+
+  it("defaults drawer height to 75vh on fresh load", async () => {
+    const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
     expect(useShellStore.getState().drawerHeight).toBe(600);
   });
 });
