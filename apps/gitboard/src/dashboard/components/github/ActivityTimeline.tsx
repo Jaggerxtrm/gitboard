@@ -164,7 +164,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
         minHeight: "var(--row-height)",
         padding: "0 16px 0 18px",
         borderRadius: 0,
-        borderBottom: "1px solid var(--border-subtle)",
+        borderBottom: 0,
         borderLeft: selected ? `2px solid ${color}` : "2px solid transparent",
         background: selected ? "var(--surface-secondary)" : hovered ? "var(--surface-hover)" : "var(--surface-primary)",
         cursor: "pointer",
