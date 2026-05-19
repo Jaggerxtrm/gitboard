@@ -21,6 +21,10 @@ export interface ShellProviderStatus {
   policy: ShellProviderPolicy;
 }
 
+export interface ShellAccessContext {
+  isVerifiedAdmin?: boolean;
+}
+
 const DEFAULT_CWD_ALLOWLIST = ["/home/dawid/dev/gitboard"];
 const DEFAULT_SHELL_ALLOWLIST = ["/bin/bash", "/bin/sh"];
 const DEFAULT_ENV_SCRUB = ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "NPM_TOKEN", "HOME", "PATH"];
@@ -52,21 +56,23 @@ export function parseShellProviderPolicy(env: NodeJS.ProcessEnv = process.env): 
   };
 }
 
-export function getShellProviderStatus(env: NodeJS.ProcessEnv = process.env): ShellProviderStatus {
+export function getShellProviderStatus(env: NodeJS.ProcessEnv = process.env, context: ShellAccessContext = {}): ShellProviderStatus {
   const policy = parseShellProviderPolicy(env);
   const remoteContext = isRemoteContext(env);
+  const isVerifiedAdmin = context.isVerifiedAdmin === true;
+  const adminDenied = policy.allowAdminOnly && !isVerifiedAdmin;
   const disabledReason = !policy.enabled
     ? "shell provider disabled by default"
     : policy.devGateRequired && env.NODE_ENV === "production"
       ? "dev gate blocks production shell access"
       : remoteContext && !policy.allowRemote
         ? "remote shell access disabled"
-        : policy.allowAdminOnly
-          ? "admin-only shell access required"
+        : adminDenied
+          ? "admin-only shell access requires verified admin"
           : "shell provider enabled";
 
   return {
-    enabled: policy.enabled && !(policy.devGateRequired && env.NODE_ENV === "production") && (!remoteContext || policy.allowRemote),
+    enabled: policy.enabled && !(policy.devGateRequired && env.NODE_ENV === "production") && (!remoteContext || policy.allowRemote) && !adminDenied,
     disabledReason,
     policy,
   };
@@ -76,7 +82,7 @@ export function shellProviderDisabledMessage(status: ShellProviderStatus): strin
   if (status.enabled) {
     return `shell provider enabled; cwd allowlist ${status.policy.cwdAllowlist.join(", ")}`;
   }
-  return `${status.disabledReason}; provider stays off until explicit env enablement`;
+  return `${status.disabledReason}; provider stays off until explicit env/admin enablement`;
 }
 
 export function isShellProviderRequestAllowed(status: ShellProviderStatus): boolean {

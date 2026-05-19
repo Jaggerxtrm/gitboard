@@ -3,8 +3,8 @@ import { getShellProviderNoticeHint, getShellProviderNoticeMessage } from "../..
 
 describe("shell provider notice helpers", () => {
   it("renders disabled text", () => {
-    const status = { enabled: false, disabledReason: "disabled by default", policy: {} } as const;
-    expect(getShellProviderNoticeMessage(status)).toBe("disabled by default");
+    const status = { enabled: false, disabledReason: "admin-only shell access requires verified admin", policy: {} } as const;
+    expect(getShellProviderNoticeMessage(status)).toBe("admin-only shell access requires verified admin");
     expect(getShellProviderNoticeHint(status)).toBe("Disabled state enforced server-side.");
   });
 });

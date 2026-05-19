@@ -8,15 +8,31 @@ describe("shell provider policy", () => {
     expect(status.disabledReason).toContain("disabled");
   });
 
-  it("enables only with explicit env gate and remote allowlist", () => {
+  it("denies enabled env when admin-only true and no verified admin", () => {
     const env = {
       NODE_ENV: "production",
       HOST: "localhost",
       GITBOARD_SHELL_PROVIDER_ENABLED: "1",
       GITBOARD_SHELL_PROVIDER_ALLOW_REMOTE: "1",
       GITBOARD_SHELL_PROVIDER_DEV_GATE: "0",
+      GITBOARD_SHELL_PROVIDER_ADMIN_ONLY: "1",
     } as NodeJS.ProcessEnv;
     const status = getShellProviderStatus(env);
+    expect(status.enabled).toBe(false);
+    expect(status.disabledReason).toContain("admin-only");
+    expect(shellProviderDisabledMessage(status)).toContain("verified admin");
+  });
+
+  it("enables only with explicit env gate, remote allowlist, and verified admin", () => {
+    const env = {
+      NODE_ENV: "production",
+      HOST: "localhost",
+      GITBOARD_SHELL_PROVIDER_ENABLED: "1",
+      GITBOARD_SHELL_PROVIDER_ALLOW_REMOTE: "1",
+      GITBOARD_SHELL_PROVIDER_DEV_GATE: "0",
+      GITBOARD_SHELL_PROVIDER_ADMIN_ONLY: "1",
+    } as NodeJS.ProcessEnv;
+    const status = getShellProviderStatus(env, { isVerifiedAdmin: true });
     expect(status.enabled).toBe(true);
     expect(status.policy.enabled).toBe(true);
     expect(shellProviderDisabledMessage(status)).toContain("cwd allowlist");
