@@ -373,31 +373,36 @@ export class GithubPoller {
       pull_request?: object;
     }
 
-    const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100`, repo, "issues");
-    if (!items) return watermark;
     let latest = watermark;
-    for (const item of items) {
-      if (item.pull_request) continue;
-      if (this.shouldStopOnWatermark(item.updated_at, watermark)) break;
-      const issue: GithubIssue = {
-        repo,
-        number: item.number,
-        title: item.title,
-        body: item.body,
-        state: item.state,
-        author: item.user.login,
-        url: item.html_url,
-        comment_count: item.comments,
-        label_names: item.labels.length > 0 ? JSON.stringify(item.labels.map((l) => l.name)) : null,
-        created_at: item.created_at,
-        updated_at: item.updated_at,
-        closed_at: item.closed_at,
-      };
-      const existing = this.db.query<GithubIssue, { $repo: string; $number: number }>("SELECT * FROM github_issues WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: item.number });
-      const changed = !existing || existing.updated_at !== issue.updated_at;
-      upsertIssue(this.db, issue);
-      if (changed || !existing) this.publishGithubEvent("github:issue.upsert", issue, issue.updated_at ?? issue.created_at);
-      latest = latest === null || item.updated_at > latest ? item.updated_at : latest;
+    const MAX_PAGES = 20;
+    for (let page = 1; page <= MAX_PAGES; page++) {
+const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100&page=${page}`, repo, "issues");
+      if (!items) return latest;
+      let watermarkHit = false;
+      for (const item of items) {
+        if (item.pull_request) continue;
+        if (this.shouldStopOnWatermark(item.updated_at, watermark)) { watermarkHit = true; break; }
+        const issue: GithubIssue = {
+          repo,
+          number: item.number,
+          title: item.title,
+          body: item.body,
+          state: item.state,
+          author: item.user.login,
+          url: item.html_url,
+          comment_count: item.comments,
+          label_names: item.labels.length > 0 ? JSON.stringify(item.labels.map((l) => l.name)) : null,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          closed_at: item.closed_at,
+        };
+        const existing = this.db.query<GithubIssue, { $repo: string; $number: number }>("SELECT * FROM github_issues WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: item.number });
+        const changed = !existing || existing.updated_at !== issue.updated_at;
+        upsertIssue(this.db, issue);
+        if (changed || !existing) this.publishGithubEvent("github:issue.upsert", issue, issue.updated_at ?? issue.created_at);
+        latest = latest === null || item.updated_at > latest ? item.updated_at : latest;
+      }
+      if (watermarkHit || items.length < 100 || this.pausedUntil > Date.now()) return latest;
     }
     return latest;
   }
@@ -418,34 +423,39 @@ export class GithubPoller {
       updated_at: string;
     }
 
-    const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`, repo, "pulls");
-    if (!prs) return watermark;
     let latest = watermark;
-    for (const pr of prs) {
-      if (this.shouldStopOnWatermark(pr.updated_at, watermark)) break;
-      const record: GithubPr = {
-        repo,
-        number: pr.number,
-        title: pr.title,
-        body: pr.body,
-        state: pr.merged_at !== null && pr.state === "closed" ? "merged" : pr.state,
-        author: pr.user.login,
-        url: pr.html_url,
-        additions: null,
-        deletions: null,
-        changed_files: null,
-        comment_count: pr.comments,
-        label_names: pr.labels.length > 0 ? JSON.stringify(pr.labels.map((l) => l.name)) : null,
-        created_at: pr.created_at,
-        updated_at: pr.updated_at,
-        merged_at: pr.merged_at,
-        closed_at: pr.closed_at,
-      };
-      const existing = this.db.query<GithubPr, { $repo: string; $number: number }>("SELECT * FROM github_prs WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: pr.number });
-      const changed = !existing || existing.updated_at !== record.updated_at;
-      upsertPr(this.db, record);
-      if (changed || !existing) this.publishGithubEvent("github:pr.upsert", record, record.updated_at ?? record.created_at);
-      latest = latest === null || pr.updated_at > latest ? pr.updated_at : latest;
+    const MAX_PAGES = 20;
+    for (let page = 1; page <= MAX_PAGES; page++) {
+const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=${page}`, repo, "pulls");
+      if (!prs) return latest;
+      let watermarkHit = false;
+      for (const pr of prs) {
+        if (this.shouldStopOnWatermark(pr.updated_at, watermark)) { watermarkHit = true; break; }
+        const record: GithubPr = {
+          repo,
+          number: pr.number,
+          title: pr.title,
+          body: pr.body,
+          state: pr.merged_at !== null && pr.state === "closed" ? "merged" : pr.state,
+          author: pr.user.login,
+          url: pr.html_url,
+          additions: null,
+          deletions: null,
+          changed_files: null,
+          comment_count: pr.comments,
+          label_names: pr.labels.length > 0 ? JSON.stringify(pr.labels.map((l) => l.name)) : null,
+          created_at: pr.created_at,
+          updated_at: pr.updated_at,
+          merged_at: pr.merged_at,
+          closed_at: pr.closed_at,
+        };
+        const existing = this.db.query<GithubPr, { $repo: string; $number: number }>("SELECT * FROM github_prs WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: pr.number });
+        const changed = !existing || existing.updated_at !== record.updated_at;
+        upsertPr(this.db, record);
+        if (changed || !existing) this.publishGithubEvent("github:pr.upsert", record, record.updated_at ?? record.created_at);
+        latest = latest === null || pr.updated_at > latest ? pr.updated_at : latest;
+      }
+      if (watermarkHit || prs.length < 100 || this.pausedUntil > Date.now()) return latest;
     }
     return latest;
   }
