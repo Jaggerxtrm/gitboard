@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getShellProviderStatus, parseShellProviderPolicy, shellProviderDisabledMessage } from "../../src/core/shell-provider-policy.ts";
+import { getProviderPermission, getShellProviderStatus, isShellCapableProviderKind, parseShellProviderPolicy, shellProviderDisabledMessage } from "../../src/core/shell-provider-policy.ts";
 
 describe("shell provider policy", () => {
   it("defaults disabled in production-like context", () => {
@@ -36,6 +36,14 @@ describe("shell provider policy", () => {
     expect(status.enabled).toBe(true);
     expect(status.policy.enabled).toBe(true);
     expect(shellProviderDisabledMessage(status)).toContain("cwd allowlist");
+  });
+
+  it("separates specialist-feed readonly permission from shell-capable providers", () => {
+    expect(isShellCapableProviderKind("specialist-feed")).toBe(false);
+    expect(getProviderPermission("specialist-feed")).toBe("readonly");
+    expect(isShellCapableProviderKind("pty")).toBe(true);
+    expect(getProviderPermission("pty")).toBe("shell");
+    expect(getProviderPermission("ssh")).toBe("shell");
   });
 
   it("parses allowlists and caps", () => {

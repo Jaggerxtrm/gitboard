@@ -25,9 +25,20 @@ export interface ShellAccessContext {
   isVerifiedAdmin?: boolean;
 }
 
+export type ProviderPermission = "readonly" | "shell";
+export type ProviderKind = "specialist-feed" | "pty" | "tmux" | "ssh";
+
 const DEFAULT_CWD_ALLOWLIST = ["/home/dawid/dev/gitboard"];
 const DEFAULT_SHELL_ALLOWLIST = ["/bin/bash", "/bin/sh"];
 const DEFAULT_ENV_SCRUB = ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "NPM_TOKEN", "HOME", "PATH"];
+
+export function isShellCapableProviderKind(kind: ProviderKind): boolean {
+  return kind !== "specialist-feed";
+}
+
+export function getProviderPermission(kind: ProviderKind): ProviderPermission {
+  return isShellCapableProviderKind(kind) ? "shell" : "readonly";
+}
 
 export function parseShellProviderPolicy(env: NodeJS.ProcessEnv = process.env): ShellProviderPolicy {
   const enabled = parseBoolean(env.GITBOARD_SHELL_PROVIDER_ENABLED);

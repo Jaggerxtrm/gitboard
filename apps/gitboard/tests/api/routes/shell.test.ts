@@ -27,4 +27,13 @@ describe("shell websocket guard", () => {
     expect(status.enabled).toBe(true);
     expect(shouldRejectShellWebSocket("/api/console/shell/ws", status)).toBe(false);
   });
+
+  it("stays quiet on refusal and does not expose commands or secrets", () => {
+    const status = getShellProviderStatus({ NODE_ENV: "production" } as NodeJS.ProcessEnv);
+    const body = JSON.stringify({ error: status.disabledReason });
+    expect(body).not.toContain("command");
+    expect(body).not.toContain("input");
+    expect(body).not.toContain("output");
+    expect(body).not.toContain("secret");
+  });
 });
