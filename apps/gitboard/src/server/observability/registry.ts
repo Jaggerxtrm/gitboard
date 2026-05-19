@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { getObservabilityConfig } from "./config.ts";
 
 export interface RepoEntry {
@@ -55,7 +55,7 @@ function walk(dirPath: string, repos: Omit<RepoEntry, "repoSlug">[]): void {
 
     try {
       const fileStat = statSync(entryPath);
-      const repoPath = dirPath;
+      const repoPath = resolveRepoRoot(dirPath);
       repos.push({ repoPath, dbPath: entryPath, mtimeMs: fileStat.mtimeMs });
     } catch {
       console.debug(`[observability] skip unreadable file ${entryPath}`);
@@ -75,6 +75,19 @@ function assignSlugs(entries: Omit<RepoEntry, "repoSlug">[]): RepoEntry[] {
     const repoSlug = count === 0 ? baseSlug : `${baseSlug}-${shortHash(entry.repoPath)}`;
     return { ...entry, repoSlug };
   });
+}
+
+function resolveRepoRoot(dbDir: string): string {
+  // observability.db lives at <repo>/.specialists/db/. Strip that suffix to get repo root.
+  let current = dbDir;
+  for (let i = 0; i < 3; i += 1) {
+    const name = basename(current);
+    const parent = dirname(current);
+    if (parent === current) break;
+    if (name === ".specialists") return parent;
+    current = parent;
+  }
+  return dbDir;
 }
 
 function slugify(value: string): string {

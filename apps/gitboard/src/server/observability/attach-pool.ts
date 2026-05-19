@@ -84,10 +84,15 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   }
 
   function readSchemaVersion(path: string): number {
+    // We read sp's observability dbs which evolve schema versions over time.
+    // The actual contract that matters is column shape on specialist_jobs, not the version number.
+    // Return 1 if the table exists (compatible), 0 otherwise (skip).
     const probe = new Database(path, { readonly: true });
     try {
-      const row = probe.prepare("PRAGMA schema_version").get() as { schema_version?: number } | undefined;
-      return row?.schema_version ?? 0;
+      const hasJobsTable = probe.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='specialist_jobs'",
+      ).get();
+      return hasJobsTable ? 1 : 0;
     } finally {
       probe.close();
     }

@@ -91,7 +91,10 @@ describe("IssueOverlay", () => {
       />,
     );
 
-    await waitFor(() => expect(getFetchMock()).toHaveBeenCalledTimes(1));
-    expect(screen.queryByLabelText("Specialist chain")).toBeNull();
+    // chainId=null → useChain short-circuits without calling /chains; graph stays hidden.
+    await waitFor(
+      () => expect(screen.queryByLabelText("Specialist chain")).toBeNull(),
+      { timeout: 2000 },
+    );
   });
 });

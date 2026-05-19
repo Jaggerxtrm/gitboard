@@ -6,7 +6,7 @@ import { useShellStore } from "../../../../src/dashboard/stores/shell.ts";
 const now = new Date("2026-05-19T12:00:00.000Z").getTime();
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(now);
   useShellStore.setState({
     repos: [],
