@@ -49,7 +49,8 @@ function ShellApp() {
   const selection = useShellStore((s) => s.selection);
   const setSurface = useShellStore((s) => s.setSurface);
   useEffect(() => {
-    if (selection.surface === "beads") setSurface("console");
+    const persistedSurface = selection.surface as string;
+    if (persistedSurface === "beads") setSurface("console");
   }, [selection.surface, setSurface]);
   useGithubActivity();
   useRepoTree();
