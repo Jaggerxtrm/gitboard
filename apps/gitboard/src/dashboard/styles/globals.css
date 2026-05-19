@@ -4351,8 +4351,8 @@ body:has(.shell-app) { background: #000 !important; }
 .bottom-drawer-tab svg { color: var(--text-muted); }
 .bottom-drawer-tab.is-active svg { color: var(--accent); }
 .bottom-drawer-icon-btn { width: 22px; justify-content: center; padding: 0; }
-.bottom-drawer-resizer { background: transparent; height: 4px; cursor: row-resize; }
-.bottom-drawer-resizer:hover, .bottom-drawer-resizer:focus-visible { background: var(--accent-soft); }
+.bottom-drawer-resizer { align-self: stretch; background: linear-gradient(to bottom, var(--bottom-drawer-border), var(--bottom-drawer-border)); cursor: row-resize; height: 2px; position: relative; z-index: 1; }
+.bottom-drawer-resizer:hover, .bottom-drawer-resizer:focus-visible { background: linear-gradient(to bottom, var(--accent), var(--accent)); }
 .drawer-panel-message { color: var(--text-muted); font-size: 12px; padding: 12px 14px; font-family: var(--font-mono); }
 .drawer-specialists { display: grid; gap: 8px; padding: 8px 0; font-family: var(--font-mono); }
 .drawer-specialists-section { display: grid; gap: 4px; }

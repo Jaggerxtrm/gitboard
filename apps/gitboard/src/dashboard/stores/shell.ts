@@ -46,7 +46,10 @@ const initialSelection = readJSON<SidebarSelection>(LS.selection, {
 const initialCollapsed = readJSON<boolean>(LS.collapsed, false);
 const initialTheme = readJSON<ThemeMode>(LS.theme, "dark");
 const initialDrawerOpen = readJSON<boolean>(LS.drawerOpen, false);
-const initialDrawerHeight = readJSON<number>(LS.drawerHeight, 240);
+function defaultDrawerHeight() {
+  return typeof window !== "undefined" ? Math.floor(window.innerHeight * 0.75) : 600;
+}
+const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
 const initialDrawerTab = readJSON<"logs" | "specialists">(LS.drawerTab, "logs");
 
 export interface ShellState {
@@ -127,7 +130,8 @@ export const useShellStore = create<ShellState>((set) => ({
 
   setDrawerHeight: (height) =>
     set(() => {
-      const next = Math.max(120, Math.min(600, Math.round(height)));
+      const maxHeight = typeof window !== "undefined" ? window.innerHeight - 100 : 600;
+      const next = Math.max(120, Math.min(maxHeight, Math.round(height)));
       writeJSON(LS.drawerHeight, next);
       return { drawerHeight: next };
     }),
