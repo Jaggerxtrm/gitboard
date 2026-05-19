@@ -11,7 +11,7 @@ import { IssueDossier } from "../../components/beads/IssueFeed.tsx";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function BeadSideDrawer() {
+export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
   const beadId = useBeadSideDrawer((s) => s.beadId);
   const projectId = useBeadSideDrawer((s) => s.projectId);
   const issueById = useBeadSideDrawer((s) => s.issueById);
@@ -45,6 +45,7 @@ export function BeadSideDrawer() {
   const handleKey = useCallback((event: KeyboardEvent) => {
     if (event.key === "Escape") {
       event.preventDefault();
+      onClose?.();
       close();
       return;
     }
@@ -87,14 +88,14 @@ export function BeadSideDrawer() {
   if (!beadId || !issue) return null;
 
   return createPortal(
-    <div className="bead-side-drawer-backdrop" onClick={close}>
+    <div className="bead-side-drawer-backdrop" onClick={() => { onClose?.(); close(); }}>
       <aside className="bead-side-drawer" ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="bead-side-drawer-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
         <header className="bead-side-drawer-header">
           <div className="bead-side-drawer-headline">
             <span className="bead-side-drawer-id">{issue.id}</span>
             <span id="bead-side-drawer-title" className="bead-side-drawer-title">{issue.title}</span>
           </div>
-          <button type="button" className="bead-side-drawer-close" aria-label="close bead drawer" onClick={close}><XIcon size={14} /></button>
+          <button type="button" className="bead-side-drawer-close" aria-label="close bead drawer" onClick={() => { onClose?.(); close(); }}><XIcon size={14} /></button>
         </header>
         <div className="bead-side-drawer-body">
           <div className="bead-dossier-meta-strip">
