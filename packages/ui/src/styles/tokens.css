@@ -30,7 +30,7 @@
   --text-muted: #757575;
   --text-disabled: #505050;
 
-  --accent: #8ed2dc;
+  --accent: #b8b8b8;
   --accent-blue: var(--accent);
   --accent-green: #7fbf8f;
   --accent-orange: #d6b36a;
@@ -49,7 +49,7 @@
   --event-branch: var(--text-secondary);
   --event-social: var(--text-muted);
 
-  --status-active: rgba(142, 210, 220, 0.12);
+  --status-active: rgba(255, 255, 255, 0.12);
   --status-pending: rgba(214, 179, 106, 0.12);
   --status-blocked: rgba(209, 132, 127, 0.12);
   --status-inactive: rgba(117, 117, 117, 0.08);
