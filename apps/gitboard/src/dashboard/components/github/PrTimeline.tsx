@@ -29,12 +29,12 @@ type PrStateTone = "open" | "merged" | "closed";
 
 function prStateStyle(state: string): { Icon: React.ElementType; color: string; tone: PrStateTone; label: string } {
   if (state === "merged") {
-    return { Icon: GitMergeIcon, color: "var(--accent-purple)", tone: "merged", label: "MERGED" };
+    return { Icon: GitMergeIcon, color: "var(--accent-purple)", tone: "merged", label: "merged" };
   }
   if (state === "closed") {
-    return { Icon: GitPullRequestClosedIcon, color: "var(--accent-red)", tone: "closed", label: "CLOSED · NOT MERGED" };
+    return { Icon: GitPullRequestClosedIcon, color: "var(--accent-red)", tone: "closed", label: "closed · not merged" };
   }
-  return { Icon: GitPullRequestIcon, color: "var(--accent-blue)", tone: "open", label: "OPEN" };
+  return { Icon: GitPullRequestIcon, color: "var(--accent-blue)", tone: "open", label: "open" };
 }
 
 function formatDateTime(iso: string | null | undefined): string {

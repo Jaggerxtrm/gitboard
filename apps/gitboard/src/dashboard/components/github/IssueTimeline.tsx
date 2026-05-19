@@ -33,7 +33,7 @@ function DayHeader({ label }: { label: string }) {
         color: "var(--text-muted)",
         fontWeight: 600,
         letterSpacing: "0.05em",
-        textTransform: "uppercase",
+        textTransform: "none",
         borderBottom: "1px solid var(--border-subtle)",
         background: "var(--surface-primary)",
       }}

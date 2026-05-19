@@ -240,7 +240,7 @@ function DayHeader({ label }: { label: string }) {
       fontSize: "var(--text-xs)",
       fontWeight: 600,
       color: "var(--text-muted)",
-      textTransform: "uppercase",
+      textTransform: "none",
       letterSpacing: "0.05em",
       background: "var(--surface-primary)",
       borderBottom: "1px solid var(--border-subtle)",
