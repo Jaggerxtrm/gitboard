@@ -264,7 +264,7 @@ export class DoltClient {
     const pool = await this.ensurePool();
     const startedAt = performance.now();
     try {
-      const result = await withTimeout(pool.execute<T>(sql, params), QUERY_TIMEOUT_MS);
+      const result = await withTimeout(pool.execute<T>(sql, params as any[]), QUERY_TIMEOUT_MS);
       rememberMetric(performance.now() - startedAt, true);
       runtime.consecutiveFailures = 0;
       return result;

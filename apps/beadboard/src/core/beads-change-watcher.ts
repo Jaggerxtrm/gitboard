@@ -102,8 +102,8 @@ export class BeadsChangeWatcher {
       if (before?.status !== "deferred" && issue.status === "deferred") this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.deferred", data: { issue } });
     }
     for (const issue of previous?.issues ?? []) if (!nextIssues.has(issue.id)) this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.delete", data: { issueId: issue.id } });
-    this.diffList(projectId, previous?.deps ?? [], next.deps, version, "beads:dep.upsert", "beads:dep.delete", "id");
-    this.diffList(projectId, previous?.memories ?? [], next.memories, version, "beads:memory.upsert", "beads:memory.delete", "id");
+    this.diffList<Record<string, unknown>>(projectId, previous?.deps as unknown as Record<string, unknown>[] ?? [], next.deps as unknown as Record<string, unknown>[], version, "beads:dep.upsert", "beads:dep.delete", "id");
+    this.diffList<Record<string, unknown>>(projectId, previous?.memories as unknown as Record<string, unknown>[] ?? [], next.memories as unknown as Record<string, unknown>[], version, "beads:memory.upsert", "beads:memory.delete", "id");
     this.diffList(projectId, previous?.kv ?? [], next.kv, version, "beads:kv.upsert", "beads:kv.delete", "key");
   }
 
@@ -130,7 +130,7 @@ export class BeadsChangeWatcher {
     }
     const grouped = new Map<string, PendingEvent[]>();
     for (const item of batch) grouped.set(item.projectId, [...(grouped.get(item.projectId) ?? []), item]);
-    for (const [projectId, events] of grouped) this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
+    for (const [projectId, events] of grouped) this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as unknown as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as unknown as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
     for (const item of batch) this.registry.publish("beads:changes", item.event, { projectId: item.projectId, source: item.source, ...item.data }, item.version);
   }
 

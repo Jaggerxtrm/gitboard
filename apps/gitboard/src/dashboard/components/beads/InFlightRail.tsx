@@ -1,4 +1,5 @@
 import { LinkIcon, StopwatchIcon } from "@primer/octicons-react";
+import type { JSX } from "react";
 import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";
 
 const EXCERPT_LIMIT = 80;
