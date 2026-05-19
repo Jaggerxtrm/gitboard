@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { XIcon } from "@primer/octicons-react";
 import type { BeadIssue, BeadIssueDetail } from "../../../types/beads.ts";
 import { IssueDossier } from "./IssueFeed.tsx";
+import { SpecialistChainGraph } from "./SpecialistChainGraph.tsx";
 
 interface IssueOverlayProps {
   issue: BeadIssue;
@@ -73,6 +74,7 @@ export function IssueOverlay({ issue, detail, loading, projectId, issueById, onC
           </button>
         </header>
         <div className="bead-overlay-content">
+          <SpecialistChainGraph beadId={issue.id} />
           <IssueDossier
             id={`bead-overlay-${issue.id}`}
             issue={issue}

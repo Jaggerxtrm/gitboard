@@ -4,6 +4,8 @@
 
 import { DependabotIcon, GitPullRequestIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon } from "@primer/octicons-react";
 import type { BeadIssue } from "../../../types/beads.ts";
+import { useSpecialistOwnership } from "../../hooks/useSpecialistOwnership.ts";
+import { SpecialistOwnerBadge } from "./SpecialistOwnerBadge.tsx";
 
 interface BeadCardPrLink {
   number: number;
@@ -40,6 +42,7 @@ export function BeadCard({ issue, onClick, agent, isExpanded = false, prLink = n
   const TypeIcon = type.icon;
   const priorityColor = PRIORITY_COLORS[String(issue.priority)] ?? "var(--text-muted)";
   const isEpic = issue.issue_type === "epic";
+  const specialistJob = useSpecialistOwnership(issue.status === "in_progress" ? issue.id : null, issue.status === "in_progress");
 
   return (
     <button
@@ -69,6 +72,12 @@ export function BeadCard({ issue, onClick, agent, isExpanded = false, prLink = n
       </div>
 
       <h4 style={{ fontSize: "var(--text-sm)", fontWeight: isEpic ? 700 : 560, color: "var(--text-primary)", lineHeight: 1.3, margin: "5px 0 0", overflow: "hidden" }}>{issue.title}</h4>
+
+      {specialistJob && (
+        <div style={{ display: "flex", alignItems: "center", marginTop: 6 }}>
+          <SpecialistOwnerBadge job={specialistJob} />
+        </div>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 6, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
         <span>P{issue.priority}</span>

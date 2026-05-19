@@ -19,6 +19,7 @@ import {
   selectSidebarCollapsed,
 } from "../../stores/shell.ts";
 import type { RepoNode } from "../../../types/shell.ts";
+import { InFlightRail } from "../beads/InFlightRail.tsx";
 
 function byRecencyDesc(a: RepoNode, b: RepoNode): number {
   // null lastActivityAt sinks to the bottom
@@ -71,6 +72,7 @@ export function Sidebar() {
       </div>
       {!collapsed && (
         <div className="ide-sidebar-body">
+          <InFlightRail />
           {groups.map((g) => (
             <section key={g.name} className="ide-sidebar-group">
               {g.name !== "Ungrouped" && (
