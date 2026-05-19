@@ -1,0 +1,41 @@
+import { describe, expect, it } from "vitest";
+import { getShellProviderStatus, parseShellProviderPolicy, shellProviderDisabledMessage } from "../../src/core/shell-provider-policy.ts";
+
+describe("shell provider policy", () => {
+  it("defaults disabled in production-like context", () => {
+    const status = getShellProviderStatus({ NODE_ENV: "production" } as NodeJS.ProcessEnv);
+    expect(status.enabled).toBe(false);
+    expect(status.disabledReason).toContain("disabled");
+  });
+
+  it("enables only with explicit env gate and remote allowlist", () => {
+    const env = {
+      NODE_ENV: "production",
+      HOST: "localhost",
+      GITBOARD_SHELL_PROVIDER_ENABLED: "1",
+      GITBOARD_SHELL_PROVIDER_ALLOW_REMOTE: "1",
+      GITBOARD_SHELL_PROVIDER_DEV_GATE: "0",
+    } as NodeJS.ProcessEnv;
+    const status = getShellProviderStatus(env);
+    expect(status.enabled).toBe(true);
+    expect(status.policy.enabled).toBe(true);
+    expect(shellProviderDisabledMessage(status)).toContain("cwd allowlist");
+  });
+
+  it("parses allowlists and caps", () => {
+    const policy = parseShellProviderPolicy({
+      GITBOARD_SHELL_PROVIDER_CWD_ALLOWLIST: "/repo,/worktree",
+      GITBOARD_SHELL_PROVIDER_SHELL_ALLOWLIST: "/bin/zsh",
+      GITBOARD_SHELL_PROVIDER_ENV_SCRUB: "HOME,PATH,SECRET",
+      GITBOARD_SHELL_PROVIDER_MAX_SESSIONS: "3",
+      GITBOARD_SHELL_PROVIDER_IDLE_TIMEOUT_MS: "1000",
+      GITBOARD_SHELL_PROVIDER_HARD_TTL_MS: "2000",
+    } as NodeJS.ProcessEnv);
+    expect(policy.cwdAllowlist).toEqual(["/repo", "/worktree"]);
+    expect(policy.shellAllowlist).toEqual(["/bin/zsh"]);
+    expect(policy.envScrub).toEqual(["HOME", "PATH", "SECRET"]);
+    expect(policy.maxSessions).toBe(3);
+    expect(policy.idleTimeoutMs).toBe(1000);
+    expect(policy.hardTtlMs).toBe(2000);
+  });
+});

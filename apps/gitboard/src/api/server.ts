@@ -10,11 +10,13 @@ import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
+import { createShellRouter } from "./routes/shell.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { listRepos } from "../server/observability/registry.ts";
+import { getShellProviderStatus, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -73,6 +75,7 @@ export function createApp(db: Database): {
   app.route("/api/specialists", createSpecialistsRouter());
   app.route("/api/console/observability", createObservabilityRouter());
   app.route("/api/console/graph", createGraphRouter());
+  app.route("/api/console/shell", createShellRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
 
@@ -120,6 +123,10 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
     hostname,
     fetch(req, server) {
       if (req.headers.get("upgrade") === "websocket") {
+        const status = getShellProviderStatus(process.env);
+        if (shouldRejectShellWebSocket(new URL(req.url).pathname, status)) {
+          return new Response(JSON.stringify({ error: status.disabledReason }), { status: 403, headers: { "Content-Type": "application/json" } });
+        }
         const upgraded = server.upgrade(req);
         if (!upgraded) {
           return new Response("WebSocket upgrade failed", { status: 400 });
