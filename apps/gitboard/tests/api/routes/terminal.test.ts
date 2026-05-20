@@ -16,7 +16,6 @@ class MockSession implements TerminalProviderSession {
   async resize(cols: number, rows: number): Promise<void> { this.sizes.push({ cols, rows }); }
   async dispose(reason: string): Promise<void> { this.disposed.push(reason); }
   emitOutput(data: string): void { for (const fn of this.outputs) fn(data); }
-  emitExit(code: number | null, signal: string | null): void { for (const fn of this.exits) fn(code, signal); }
 }
 
 function makeRegistry(provider: TerminalProvider): TerminalProviderRegistry {
@@ -63,5 +62,55 @@ describe("terminal bridge lifecycle", () => {
       const out = msg as { kind: string; payload: { code?: string } };
       return out.kind === "error" && out.payload.code === "provider_disabled";
     })).toBe(true);
+  });
+
+  it("denies connB controlling connA session", async () => {
+    const session = new MockSession();
+    const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
+    const bridge = new TerminalBridge(makeRegistry(provider));
+    const sentA: unknown[] = [];
+    const sentB: unknown[] = [];
+    const connA = bridge.connect((payload) => sentA.push(JSON.parse(payload)));
+    const connB = bridge.connect((payload) => sentB.push(JSON.parse(payload)));
+
+    await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("input", "stream-1", "session-1", { data: "pwd\n", encoding: "utf8" })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("resize", "stream-1", "session-1", { cols: 10, rows: 10 })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("exit", "stream-1", "session-1", { code: 0, signal: null })));
+
+    expect(session.inputs).toEqual([]);
+    expect(session.sizes).toEqual([]);
+    expect(session.disposed).toEqual([]);
+    expect(sentB.filter((msg) => (msg as { kind: string; payload: { code?: string } }).kind === "error" && (msg as { payload: { code?: string } }).payload.code === "forbidden").length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("denies streamId mismatch and duplicate session open", async () => {
+    const session = new MockSession();
+    const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
+    const bridge = new TerminalBridge(makeRegistry(provider));
+    const sent: unknown[] = [];
+    const conn = bridge.connect((payload) => sent.push(JSON.parse(payload)));
+
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("input", "stream-2", "session-1", { data: "bad\n", encoding: "utf8" })));
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+
+    expect(sent.some((msg) => (msg as { kind: string; payload: { code?: string } }).kind === "error" && (msg as { payload: { code?: string } }).payload.code === "stream_mismatch")).toBe(true);
+    expect(sent.some((msg) => (msg as { kind: string; payload: { code?: string } }).kind === "error" && (msg as { payload: { code?: string } }).payload.code === "duplicate_session")).toBe(true);
+  });
+
+  it("disconnect cleanup disposes unowned session remains protected", async () => {
+    const session = new MockSession();
+    const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
+    const bridge = new TerminalBridge(makeRegistry(provider));
+    const connA = bridge.connect(() => {});
+    const connB = bridge.connect(() => {});
+
+    await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+    bridge.disconnect(connA);
+    expect(session.disposed).toContain("disconnect");
+
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false })));
   });
 });
