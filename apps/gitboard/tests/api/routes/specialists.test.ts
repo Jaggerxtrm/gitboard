@@ -128,6 +128,32 @@ describe("GET /api/specialists/jobs/in-flight", () => {
     const json = await res.json() as { jobs: Array<Record<string, unknown>>; epoch: Record<string, number> };
     expect(json.jobs.every((job) => job.repoSlug === "repo-a")).toBe(true);
   });
+
+  it("reuses cached live summaries until repo epoch changes", async () => {
+    let epoch = 0;
+    let inFlightCalls = 0;
+    let recentCalls = 0;
+    const job = specialistJob({ beadId: "bead-live", status: "running" });
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: () => { inFlightCalls += 1; return [job]; },
+      recentJobs: () => { recentCalls += 1; return []; },
+      chainById: () => [],
+    }, { listRepos: () => [{ repoSlug: "repo-a" }], getEpoch: () => epoch }));
+
+    await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
+    await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
+    expect(inFlightCalls).toBe(1);
+    expect(recentCalls).toBe(1);
+
+    epoch += 1;
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
+    const json = await res.json() as { epoch: Record<string, number> };
+    expect(json.epoch).toEqual({ "repo-a": 1 });
+    expect(inFlightCalls).toBe(2);
+    expect(recentCalls).toBe(2);
+  });
 });
 
 describe("GET /api/specialists/chains/:chain_id", () => {
@@ -166,6 +192,21 @@ describe("GET /api/specialists/chains/:chain_id", () => {
     expect(json.chain.jobs.every((job) => job.repoSlug === "repo-a")).toBe(true);
   });
 });
+
+function specialistJob(overrides: Partial<Record<"beadId" | "status", string>> = {}) {
+  return {
+    jobId: "job-live",
+    repoSlug: "repo-a",
+    beadId: overrides.beadId ?? "bead-1",
+    chainId: null,
+    epicId: null,
+    chainKind: null,
+    status: overrides.status ?? "running",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    specialist: "executor",
+    lastOutput: null,
+  };
+}
 
 function createAppWithDao(reposOverride: Array<{ repoSlug: string; rows: SeedRow[]; schemaOk?: boolean }> = repos): Hono {
   const pool = createAttachPool(reposOverride.map((repo) => ({
