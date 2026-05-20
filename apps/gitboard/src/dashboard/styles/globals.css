@@ -4406,7 +4406,7 @@ body:has(.shell-app) { background: #101010 !important; }
 
 .terminal-panel {
   --terminal-font: "JetBrainsMono Nerd Font Mono", "Hack Nerd Font Mono", "SFMono Nerd Font", "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  background: #060708;
+  background: #141414;
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
@@ -4440,7 +4440,7 @@ body:has(.shell-app) { background: #101010 !important; }
 .terminal-panel-error { background: rgba(229, 115, 115, 0.12); border-bottom: 1px solid rgba(229, 115, 115, 0.28); color: #ffb4ab; flex: 0 0 auto; font-family: var(--terminal-font); font-size: 11px; padding: 6px 10px; }
 
 .terminal-stream {
-  --terminal-bg: #000;
+  --terminal-bg: #141414;
   --terminal-fg: #d7dde5;
   --terminal-cursor: #2dd4bf;
   --terminal-selection: rgba(45, 212, 191, 0.28);
