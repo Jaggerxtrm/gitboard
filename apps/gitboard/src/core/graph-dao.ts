@@ -27,7 +27,8 @@ const projectScanCache = new WeakMap<ProjectScanner, CacheEntry<BeadsProject[]>>
 const projectScanInflight = new WeakMap<ProjectScanner, Promise<BeadsProject[]>>();
 const issueCache = new Map<string, CacheEntry<BeadIssue[]>>();
 const issueInflight = new Map<string, Promise<BeadIssue[]>>();
-let graphEpoch = 0;
+const projectIssueEpochs = new Map<string, number>();
+let globalIssueEpoch = 0;
 
 export interface GraphDaoOptions {
   scanner?: ProjectScanner;
@@ -50,20 +51,28 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
     },
     invalidate(projectId?: string | null): void {
       projectScanCache.delete(scanner);
+      projectScanInflight.delete(scanner);
       invalidateGraphCache(projectId);
     },
   };
 }
 
 export function invalidateGraphCache(projectId?: string | null): void {
-  graphEpoch += 1;
   if (!projectId) {
+    globalIssueEpoch += 1;
     issueCache.clear();
+    issueInflight.clear();
     projectScanCache.delete(getScanner());
+    projectScanInflight.delete(getScanner());
     return;
   }
+
+  projectIssueEpochs.set(projectId, (projectIssueEpochs.get(projectId) ?? 0) + 1);
   for (const key of issueCache.keys()) {
     if (key.startsWith(`${projectId}:`)) issueCache.delete(key);
+  }
+  for (const key of issueInflight.keys()) {
+    if (key.startsWith(`${projectId}:`)) issueInflight.delete(key);
   }
 }
 
@@ -88,7 +97,8 @@ async function scanProjects(scanner: ProjectScanner): Promise<BeadsProject[]> {
 function issueCacheKey(project: BeadsProject): string {
   const source = project.source ?? "unknown";
   const port = project.doltPort ?? "jsonl";
-  return `${project.id}:${project.beadsPath}:${source}:${port}:${project.doltDatabase ?? "dolt"}:${graphEpoch}`;
+  const projectEpoch = projectIssueEpochs.get(project.id) ?? 0;
+  return `${project.id}:${project.beadsPath}:${source}:${port}:${project.doltDatabase ?? "dolt"}:${globalIssueEpoch}:${projectEpoch}`;
 }
 
 async function readIssuesCached(project: BeadsProject): Promise<BeadIssue[]> {
