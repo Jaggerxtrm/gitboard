@@ -109,11 +109,13 @@ function buildEdge(
   };
 }
 
-// Pick handle pair so the bezier never wraps back over a chip:
-//   forward   (Δx > Δy threshold, target right of source)  : right → left
-//   reverse   (Δx > Δy threshold, target left of source)   : left → right
-//   same col  (Δx ≈ 0)                                     : bottom → top  /  top → bottom
-//   diagonal-up   : right → bottom  (or symmetric)
+// Pick handle pair so the bezier never wraps back over — or cuts through — a
+// chip. Same-column edges (siblings → shared epic, etc.) detour via the LEFT
+// margin: both handles on the left side push their control points outward, so
+// the curve bulges around the chip stack instead of slicing through it.
+//   forward   (target clearly right of source)  : right → left
+//   reverse   (target clearly left of source)   : left → right
+//   same col  (Δx ≈ 0)                          : left → left (detour left)
 // Returned handle ids match BeadNode's <Handle id="..."> entries.
 function pickHandles(
   from: { x: number; y: number } | undefined,
@@ -121,13 +123,9 @@ function pickHandles(
 ): { sourceHandle: string; targetHandle: string } {
   if (!from || !to) return { sourceHandle: "rs", targetHandle: "lt" };
   const dx = to.x - from.x;
-  const dy = to.y - from.y;
   const SAME_COL_TOL = NODE_W * 0.5;
   if (Math.abs(dx) < SAME_COL_TOL) {
-    // Same column (or nearly): route vertically.
-    return dy >= 0
-      ? { sourceHandle: "bs", targetHandle: "tt" }
-      : { sourceHandle: "ts", targetHandle: "bt" };
+    return { sourceHandle: "ls", targetHandle: "lt" };
   }
   if (dx > 0) return { sourceHandle: "rs", targetHandle: "lt" };
   return { sourceHandle: "ls", targetHandle: "rt" };

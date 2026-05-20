@@ -5156,6 +5156,39 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
   width: 100%;
   min-height: 120px;
 }
+/* HTML edge labels (rendered via EdgeLabelRenderer). Tight mono italic with a
+   matched-surface outline (text-shadow simulating SVG paint-order stroke) so
+   the label reads against the path without needing a hard background pill. */
+.g-flow-elabel {
+  position: absolute;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  white-space: nowrap;
+  opacity: 0.7;
+  z-index: 2;
+  text-shadow:
+    -2px 0 var(--surface-primary), 2px 0 var(--surface-primary),
+    0 -2px var(--surface-primary), 0 2px var(--surface-primary),
+    -1px -1px var(--surface-primary), 1px -1px var(--surface-primary),
+    -1px 1px var(--surface-primary), 1px 1px var(--surface-primary);
+}
+.g-flow-elabel.blocks     { color: var(--graph-edge-blocks); }
+.g-flow-elabel.caused     { color: var(--graph-edge-caused-by); }
+.g-flow-elabel.validates  { color: var(--graph-edge-validates); }
+.g-flow-elabel.tracks     { color: var(--graph-edge-tracks); }
+.g-flow-elabel.until      { color: var(--graph-edge-until); }
+.g-flow-elabel.discovered { color: var(--graph-edge-discovered-from); }
+.g-flow-elabel.supersedes { color: var(--graph-edge-supersedes); }
+.g-flow-elabel.parent     { color: var(--text-muted); }
+.g-flow-elabel.related    { color: var(--text-muted); }
 .g-pane .react-flow__attribution,
 .g-pane .react-flow__panel.react-flow__attribution { display: none; }
 .g-pane .react-flow__node-beadNode {

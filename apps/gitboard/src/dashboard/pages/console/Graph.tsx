@@ -38,8 +38,8 @@ export function Graph() {
   const selection = useShellStore(selectSelection);
   const projectId = selection.repo ? selection.repo.split("/").pop() ?? null : null;
   const { loading, error, data } = useGraphData(projectId);
-  const [showParent, setShowParent] = useState(false);
-  const [showRelated, setShowRelated] = useState(false);
+  const [showParent, setShowParent] = useState(true);
+  const [showRelated, setShowRelated] = useState(true);
   const [revealDeferred, setRevealDeferred] = useState(false);
 
   const specialistByBead = useMemo(() => {
