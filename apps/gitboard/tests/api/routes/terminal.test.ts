@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createTerminalStreamEnvelope } from "../../../../../packages/core/src/terminal/protocol.ts";
 import { TerminalBridge } from "../../../src/api/terminal/bridge.ts";
 import type { TerminalProvider, TerminalProviderRegistry, TerminalProviderSession } from "../../../src/api/terminal/provider-registry.ts";
@@ -64,7 +64,7 @@ describe("terminal bridge lifecycle", () => {
     })).toBe(true);
   });
 
-  it("denies connB controlling connA session", async () => {
+  it("allows reattach from new connection and keeps session alive until cleanup", async () => {
     const session = new MockSession();
     const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
     const bridge = new TerminalBridge(makeRegistry(provider));
@@ -74,15 +74,15 @@ describe("terminal bridge lifecycle", () => {
     const connB = bridge.connect((payload) => sentB.push(JSON.parse(payload)));
 
     await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+    bridge.disconnect(connA);
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false })));
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("input", "stream-1", "session-1", { data: "pwd\n", encoding: "utf8" })));
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("resize", "stream-1", "session-1", { cols: 10, rows: 10 })));
-    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("exit", "stream-1", "session-1", { code: 0, signal: null })));
 
-    expect(session.inputs).toEqual([]);
-    expect(session.sizes).toEqual([]);
+    expect(session.inputs).toEqual(["pwd\n"]);
+    expect(session.sizes).toEqual([{ cols: 10, rows: 10 }]);
     expect(session.disposed).toEqual([]);
-    expect(sentB.filter((msg) => (msg as { kind: string; payload: { code?: string } }).kind === "error" && (msg as { payload: { code?: string } }).payload.code === "forbidden").length).toBeGreaterThanOrEqual(4);
+    expect(sentB.some((msg) => (msg as { kind: string }).kind === "status")).toBe(true);
   });
 
   it("rejects invalid sessionId on open and mutating paths", async () => {
@@ -118,6 +118,7 @@ describe("terminal bridge lifecycle", () => {
   });
 
   it("disconnect cleanup disposes unowned session remains protected", async () => {
+    vi.useFakeTimers();
     const session = new MockSession();
     const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
     const bridge = new TerminalBridge(makeRegistry(provider));
@@ -126,8 +127,10 @@ describe("terminal bridge lifecycle", () => {
 
     await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
     bridge.disconnect(connA);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(session.disposed).toContain("disconnect");
 
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false })));
+    vi.useRealTimers();
   });
 });

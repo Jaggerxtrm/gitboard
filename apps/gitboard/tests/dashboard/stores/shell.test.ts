@@ -22,12 +22,16 @@ describe("shell store drawer persistence", () => {
     useShellStore.getState().setDrawerOpen(true);
     useShellStore.getState().setDrawerHeight(333);
     useShellStore.getState().setDrawerTab("terminal");
+    useShellStore.getState().setTerminalSessionId("session-1");
+    useShellStore.getState().appendTerminalOutput("hello\n");
 
     vi.resetModules();
     const { useShellStore: rehydrated } = await import("../../../src/dashboard/stores/shell.ts");
     expect(rehydrated.getState().drawerOpen).toBe(true);
     expect(rehydrated.getState().drawerHeight).toBe(333);
     expect(rehydrated.getState().drawerTab).toBe("terminal");
+    expect(rehydrated.getState().terminalSessionId).toBe("session-1");
+    expect(rehydrated.getState().terminalOutput).toEqual(["hello\n"]);
   });
 
   it("clamps drawer height", async () => {

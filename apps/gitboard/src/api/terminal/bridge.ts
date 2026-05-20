@@ -7,11 +7,11 @@ import type { TerminalProviderRegistry, TerminalProviderSession } from "./provid
 
 type Send = (payload: string) => void;
 type SessionState = {
-  ownerConnectionId: string;
   streamId: string;
   session: TerminalProviderSession;
   attached: Set<string>;
   seq: number;
+  cleanupTimer: ReturnType<typeof setTimeout> | null;
 };
 
 export class TerminalBridge {
@@ -31,7 +31,12 @@ export class TerminalBridge {
     this.sockets.delete(connectionId);
     for (const [sessionId, state] of this.sessions.entries()) {
       state.attached.delete(connectionId);
-      if (state.attached.size === 0) void state.session.dispose("disconnect").finally(() => this.sessions.delete(sessionId));
+      if (state.attached.size === 0) {
+        if (state.cleanupTimer) clearTimeout(state.cleanupTimer);
+        state.cleanupTimer = setTimeout(() => {
+          void state.session.dispose("disconnect").finally(() => this.sessions.delete(sessionId));
+        }, 30_000);
+      }
     }
   }
 
@@ -79,7 +84,7 @@ export class TerminalBridge {
     }
     try {
       const session = await provider.openSession({ sessionId: msg.sessionId, capabilities: msg.payload.capabilities });
-      const state: SessionState = { ownerConnectionId: connectionId, streamId: msg.streamId, session, attached: new Set([connectionId]), seq: 0 };
+      const state: SessionState = { streamId: msg.streamId, session, attached: new Set([connectionId]), seq: 0, cleanupTimer: null };
       state.session.onOutput((data) => {
         state.seq += 1;
         this.broadcast(msg.sessionId, createTerminalStreamEnvelope("output", state.streamId, msg.sessionId, { data, encoding: "utf8", sequence: state.seq, bytes: Buffer.byteLength(data) }));
@@ -98,8 +103,11 @@ export class TerminalBridge {
   private attach(connectionId: string, send: Send, sessionId: string, streamId: string): void {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
-    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "session access denied", false);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
+    if (state.cleanupTimer) {
+      clearTimeout(state.cleanupTimer);
+      state.cleanupTimer = null;
+    }
     state.attached.add(connectionId);
     send(JSON.stringify(createTerminalStreamEnvelope("status", streamId, sessionId, { state: "attached", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0 })));
   }
@@ -107,15 +115,19 @@ export class TerminalBridge {
   private detach(connectionId: string, send: Send, sessionId: string, streamId: string): void {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
-    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "session access denied", false);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
     state.attached.delete(connectionId);
+    if (state.attached.size === 0) {
+      if (state.cleanupTimer) clearTimeout(state.cleanupTimer);
+      state.cleanupTimer = setTimeout(() => {
+        void state.session.dispose("detach_timeout").finally(() => this.sessions.delete(sessionId));
+      }, 30_000);
+    }
   }
 
   private async input(connectionId: string, send: Send, sessionId: string, streamId: string, data: string): Promise<void> {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
-    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "session access denied", false);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
     try {
       await state.session.input(data);
@@ -127,7 +139,6 @@ export class TerminalBridge {
   private async resize(connectionId: string, send: Send, sessionId: string, streamId: string, cols: number, rows: number): Promise<void> {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
-    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "session access denied", false);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
     try {
       await state.session.resize(cols, rows);
@@ -139,7 +150,6 @@ export class TerminalBridge {
   private async exit(connectionId: string, send: Send, sessionId: string, streamId: string): Promise<void> {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
-    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "session access denied", false);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
     await state.session.dispose("client_exit");
     this.sessions.delete(sessionId);

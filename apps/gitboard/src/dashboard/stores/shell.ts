@@ -52,6 +52,8 @@ function defaultDrawerHeight() {
 }
 const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
 const initialDrawerTab = readJSON<DrawerTab>(LS.drawerTab, "logs");
+const initialTerminalSessionId = readJSON<string | null>("forge-gud9:terminalSessionId", null);
+const initialTerminalOutput = readJSON<string[]>("forge-gud9:terminalOutput", []);
 
 export interface ShellState {
   repos: RepoNode[];
@@ -61,6 +63,8 @@ export interface ShellState {
   drawerOpen: boolean;
   drawerHeight: number;
   drawerTab: DrawerTab;
+  terminalSessionId: string | null;
+  terminalOutput: string[];
 
   setRepos: (repos: RepoNode[]) => void;
   setSurface: (surface: Surface) => void;       // switching surface resets tab to default
@@ -71,6 +75,9 @@ export interface ShellState {
   setDrawerOpen: (open: boolean) => void;
   setDrawerHeight: (height: number) => void;
   setDrawerTab: (tab: DrawerTab) => void;
+  setTerminalSessionId: (sessionId: string | null) => void;
+  appendTerminalOutput: (chunk: string) => void;
+  resetTerminalOutput: () => void;
 }
 
 export const useShellStore = create<ShellState>((set) => ({
@@ -81,6 +88,8 @@ export const useShellStore = create<ShellState>((set) => ({
   drawerOpen: initialDrawerOpen,
   drawerHeight: initialDrawerHeight,
   drawerTab: initialDrawerTab,
+  terminalSessionId: initialTerminalSessionId,
+  terminalOutput: initialTerminalOutput,
 
   setRepos: (repos) => set({ repos }),
 
@@ -141,6 +150,25 @@ export const useShellStore = create<ShellState>((set) => ({
     set(() => {
       writeJSON(LS.drawerTab, tab);
       return { drawerTab: tab };
+    }),
+
+  setTerminalSessionId: (sessionId) =>
+    set(() => {
+      writeJSON("forge-gud9:terminalSessionId", sessionId);
+      return { terminalSessionId: sessionId };
+    }),
+
+  appendTerminalOutput: (chunk) =>
+    set((state) => {
+      const next = [...state.terminalOutput, chunk].slice(-2000);
+      writeJSON("forge-gud9:terminalOutput", next);
+      return { terminalOutput: next };
+    }),
+
+  resetTerminalOutput: () =>
+    set(() => {
+      writeJSON("forge-gud9:terminalOutput", []);
+      return { terminalOutput: [] };
     }),
 }));
 
