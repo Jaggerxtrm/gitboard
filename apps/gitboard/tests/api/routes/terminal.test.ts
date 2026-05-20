@@ -85,6 +85,23 @@ describe("terminal bridge lifecycle", () => {
     expect(sentB.filter((msg) => (msg as { kind: string; payload: { code?: string } }).kind === "error" && (msg as { payload: { code?: string } }).payload.code === "forbidden").length).toBeGreaterThanOrEqual(4);
   });
 
+  it("rejects invalid sessionId on open and mutating paths", async () => {
+    const session = new MockSession();
+    const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
+    const bridge = new TerminalBridge(makeRegistry(provider));
+    const sent: unknown[] = [];
+    const conn = bridge.connect((payload) => sent.push(JSON.parse(payload)));
+
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "", { providerKind: "pty", capabilities: ["interactive"] })));
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("input", "stream-1", "bad id with spaces", { data: "x", encoding: "utf8" })));
+
+    expect(sent.filter((msg) => {
+      const out = msg as { kind: string; payload: { code?: string } };
+      return out.kind === "error" && out.payload.code === "invalid_session_id";
+    }).length).toBeGreaterThanOrEqual(2);
+  });
+
   it("denies streamId mismatch and duplicate session open", async () => {
     const session = new MockSession();
     const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };

@@ -53,6 +53,10 @@ export class TerminalBridge {
     }
 
     const msg = parsed as TerminalStreamMessage;
+    if (!isValidSessionId(msg.sessionId)) {
+      this.sendError(send, msg.streamId, msg.sessionId, "invalid_session_id", "invalid session id", true);
+      return;
+    }
     if (msg.kind === "open") return this.open(connectionId, send, msg);
     if (msg.kind === "attach") return this.attach(connectionId, send, msg.sessionId, msg.streamId);
     if (msg.kind === "detach") return this.detach(connectionId, send, msg.sessionId, msg.streamId);
@@ -151,4 +155,11 @@ export class TerminalBridge {
   private sendError(send: Send, streamId: string, sessionId: string, code: string, message: string, recoverable: boolean): void {
     send(JSON.stringify(createTerminalStreamEnvelope("error", streamId, sessionId, { code, message, recoverable })));
   }
+}
+
+const SESSION_ID_MAX = 128;
+const SESSION_ID_RE = /^[A-Za-z0-9._:-]+$/;
+
+function isValidSessionId(value: string): boolean {
+  return value.length > 0 && value.length <= SESSION_ID_MAX && SESSION_ID_RE.test(value);
 }
