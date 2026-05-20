@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { basename, resolve, sep } from "node:path";
+import { realpathSync } from "node:fs";
 import type { ShellProviderPolicy, ShellProviderStatus } from "./shell-provider-policy.ts";
 
 export interface LocalPtyProviderOptions {
@@ -47,7 +48,7 @@ export interface PtyLike {
 }
 
 export interface PtyFactory {
-  create(options: { cwd: string; shell: string; cols: number; rows: number }): PtyLike;
+  create(options: { cwd: string; shell: string; cols: number; rows: number; env: NodeJS.ProcessEnv }): PtyLike;
 }
 
 type SessionRecord = {
@@ -56,12 +57,16 @@ type SessionRecord = {
   idleTimer: ReturnType<typeof setTimeout> | null;
   hardTimer: ReturnType<typeof setTimeout> | null;
   disposed: boolean;
+  inputBytes: number;
+  outputBytes: number;
+  windowStartMs: number;
 };
 
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 const FALLBACK_SHELL = "/bin/bash";
 const SESSION_PREFIX = "pty";
+const ENV_ALLOWLIST = ["TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "PATH", "USER", "LOGNAME", "PWD", "SHELL"];
 
 export class LocalPtyProvider extends EventEmitter {
   private sessions = new Map<string, SessionRecord>();
@@ -69,6 +74,7 @@ export class LocalPtyProvider extends EventEmitter {
   private readonly policy: ShellProviderPolicy;
   private readonly status: ShellProviderStatus;
   private readonly workspaceRoot: string;
+  private readonly workspaceRootReal: string;
   private readonly ptyFactory: PtyFactory;
   private readonly now: () => number;
 
@@ -77,6 +83,7 @@ export class LocalPtyProvider extends EventEmitter {
     this.policy = options.policy;
     this.status = options.status;
     this.workspaceRoot = resolve(options.workspaceRoot);
+    this.workspaceRootReal = this.resolveExistingPath(this.workspaceRoot);
     this.ptyFactory = options.ptyFactory ?? createNativePtyFactory();
     this.now = options.now ?? (() => Date.now());
   }
@@ -90,10 +97,11 @@ export class LocalPtyProvider extends EventEmitter {
     const cols = request.cols ?? DEFAULT_COLS;
     const rows = request.rows ?? DEFAULT_ROWS;
     const id = `${SESSION_PREFIX}-${this.nextSessionId++}`;
+    const env = this.buildSpawnEnv();
 
-    const pty = this.ptyFactory.create({ cwd, shell, cols, rows });
+    const pty = this.ptyFactory.create({ cwd, shell, cols, rows, env });
     const handle = this.buildHandle(id, cwd, shell);
-    const record: SessionRecord = { handle, pty, idleTimer: null, hardTimer: null, disposed: false };
+    const record: SessionRecord = { handle, pty, idleTimer: null, hardTimer: null, disposed: false, inputBytes: 0, outputBytes: 0, windowStartMs: this.now() };
     this.sessions.set(id, record);
 
     pty.onData((data) => this.forwardOutput(id, data));
@@ -110,6 +118,7 @@ export class LocalPtyProvider extends EventEmitter {
   write(sessionId: string, data: string): void {
     const record = this.requireSession(sessionId);
     if (record.disposed) return;
+    this.consumeInputBudget(record, Buffer.byteLength(data));
     record.pty.write(data);
     this.touch(sessionId);
   }
@@ -166,6 +175,11 @@ export class LocalPtyProvider extends EventEmitter {
   private forwardOutput(sessionId: string, data: string): void {
     const record = this.sessions.get(sessionId);
     if (!record || record.disposed) return;
+    const bytes = Buffer.byteLength(data);
+    if (!this.consumeOutputBudget(record, bytes)) {
+      this.disposeSession(sessionId, "disposed");
+      return;
+    }
     this.touch(sessionId);
     this.emit("output", { sessionId, data } satisfies LocalPtyOutputEvent);
   }
@@ -197,8 +211,8 @@ export class LocalPtyProvider extends EventEmitter {
   }
 
   private resolveCwd(requestedCwd?: string): string {
-    const candidate = resolve(this.workspaceRoot, requestedCwd ?? ".");
-    const allowed = this.policy.cwdAllowlist.some((allowedRoot) => this.isWithinPath(candidate, resolve(allowedRoot)));
+    const candidate = this.resolveExistingPath(resolve(this.workspaceRoot, requestedCwd ?? "."));
+    const allowed = this.policy.cwdAllowlist.some((allowedRoot) => this.isWithinPath(candidate, this.resolveExistingPath(resolve(allowedRoot))));
     if (!allowed) {
       throw new Error(`cwd outside allowlist: ${candidate}`);
     }
@@ -215,6 +229,58 @@ export class LocalPtyProvider extends EventEmitter {
 
   private isWithinPath(candidate: string, root: string): boolean {
     return candidate === root || candidate.startsWith(root + sep);
+  }
+
+  private resolveExistingPath(pathname: string): string {
+    try {
+      return realpathSync(pathname);
+    } catch {
+      throw new Error(`cwd missing or unreadable: ${pathname}`);
+    }
+  }
+
+  private buildSpawnEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {};
+    for (const key of ENV_ALLOWLIST) {
+      const value = process.env[key];
+      if (value !== undefined) env[key] = value;
+    }
+    for (const key of this.policy.envScrub) {
+      delete env[key];
+    }
+    env.PWD = this.workspaceRootReal;
+    env.SHELL = env.SHELL ?? this.resolveShell(undefined);
+    env.TERM = env.TERM ?? "xterm-256color";
+    return env;
+  }
+
+  private consumeInputBudget(record: SessionRecord, bytes: number): void {
+    this.refreshWindow(record);
+    record.inputBytes += bytes;
+    if (record.inputBytes > this.policy.maxInputBytesPerSecond) {
+      const error = this.burstError("input");
+      this.disposeSession(record.handle.id, "disposed");
+      throw error;
+    }
+  }
+
+  private consumeOutputBudget(record: SessionRecord, bytes: number): boolean {
+    this.refreshWindow(record);
+    record.outputBytes += bytes;
+    return record.outputBytes <= this.policy.maxOutputBytesPerSecond;
+  }
+
+  private refreshWindow(record: SessionRecord): void {
+    const now = this.now();
+    if (now - record.windowStartMs >= 1000) {
+      record.windowStartMs = now;
+      record.inputBytes = 0;
+      record.outputBytes = 0;
+    }
+  }
+
+  private burstError(direction: "input" | "output"): Error {
+    return new Error(`${direction} rate limit exceeded`);
   }
 
   private requireSession(sessionId: string): SessionRecord {
