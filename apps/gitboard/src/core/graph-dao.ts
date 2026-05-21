@@ -181,9 +181,11 @@ function getObservabilityDao() {
   return observabilityDao;
 }
 
-function resolveProject(projects: BeadsProject[], projectId: string | null | undefined): BeadsProject | null {
-  if (!projectId) return null;
-  const match = projects.find((project) => project.id === projectId || project.name === projectId);
+export function resolveProject(projects: BeadsProject[], projectId: string | null | undefined): BeadsProject | null {
+  const normalizedProjectId = projectId?.trim();
+  if (!normalizedProjectId) return null;
+
+  const match = projects.find((project) => project.id === normalizedProjectId || project.name === normalizedProjectId);
   return match ?? null;
 }
 

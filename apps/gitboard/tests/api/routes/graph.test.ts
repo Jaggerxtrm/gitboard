@@ -44,7 +44,7 @@ afterEach(async () => {
 describe("GET /api/console/graph", () => {
   it("returns nodes, edges, specialists", async () => {
     const app = createApp();
-    const res = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard&include_closed=false"));
+    const res = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
     expect(res.status).toBe(200);
     const json = await res.json() as { project_id: string; repo_slug: string; nodes: Array<{ id: string }>; edges: Array<{ type: string }>; specialists: Array<{ bead_id: string; status: string }> };
     expect(json.project_id).toBe("gitboard");
@@ -59,9 +59,9 @@ describe("GET /api/console/graph", () => {
 
   it("includes closed nodes when include_closed=true", async () => {
     const app = createApp();
-    const openRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard&include_closed=false"));
+    const openRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
     const openJson = await openRes.json() as { nodes: Array<{ id: string }> };
-    const closedRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard&include_closed=true"));
+    const closedRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=true"));
     const closedJson = await closedRes.json() as { nodes: Array<{ id: string }> };
 
     expect(closedJson.nodes.length).toBeGreaterThan(openJson.nodes.length);
@@ -73,18 +73,18 @@ describe("GET /api/console/graph", () => {
     const scanner = new CountingScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git"] });
     const app = createApp(scanner);
 
-    const firstRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard"));
+    const firstRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard"));
     const first = await firstRes.json() as { nodes: Array<{ id: string }> };
     expect(first.nodes.some((node) => node.id === "gitboard-7")).toBe(false);
 
     await appendFile(join(dir, "gitboard", ".beads", "backup", "issues.jsonl"), `\n${JSON.stringify({ id: "gitboard-7", title: "G", description: null, status: "open", priority: 2, issue_type: "task", owner: null, created_at: "2026-01-01T00:00:00Z", created_by: null, updated_at: "2026-01-01T00:00:00Z", closed_at: null, close_reason: null })}`);
 
-    const cachedRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard"));
+    const cachedRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard"));
     const cached = await cachedRes.json() as { nodes: Array<{ id: string }> };
     expect(cached.nodes.some((node) => node.id === "gitboard-7")).toBe(false);
     expect(scanner.scanCount).toBe(1);
 
-    const refreshedRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard&refresh=true"));
+    const refreshedRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&refresh=true"));
     const refreshed = await refreshedRes.json() as { nodes: Array<{ id: string }> };
     expect(refreshed.nodes.some((node) => node.id === "gitboard-7")).toBe(true);
     expect(scanner.scanCount).toBe(2);
@@ -94,9 +94,9 @@ describe("GET /api/console/graph", () => {
     const scanner = new DelayedScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git"] });
     const app = createApp(scanner);
 
-    const first = app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard"));
+    const first = app.fetch(new Request("http://localhost/api/console/graph?project=gitboard"));
     await scanner.waitForScanStart();
-    const refreshed = app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard&refresh=true"));
+    const refreshed = app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&refresh=true"));
 
     scanner.releaseNextScan();
     await scanner.waitForScanStart(2);
@@ -112,15 +112,15 @@ describe("GET /api/console/graph", () => {
     const scanner = new CountingScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git"] });
     const app = createApp(scanner);
 
-    await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard"));
-    const sideInitialRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=sideboard"));
+    await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard"));
+    const sideInitialRes = await app.fetch(new Request("http://localhost/api/console/graph?project=sideboard"));
     const sideInitial = await sideInitialRes.json() as { nodes: Array<{ id: string }> };
     expect(sideInitial.nodes.some((node) => node.id === "sideboard-7")).toBe(false);
 
     await appendFile(join(dir, "sideboard", ".beads", "backup", "issues.jsonl"), `\n${JSON.stringify({ id: "sideboard-7", title: "Side", description: null, status: "open", priority: 2, issue_type: "task", owner: null, created_at: "2026-01-01T00:00:00Z", created_by: null, updated_at: "2026-01-01T00:00:00Z", closed_at: null, close_reason: null })}`);
 
-    await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard&refresh=true"));
-    const sideCachedRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=sideboard"));
+    await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&refresh=true"));
+    const sideCachedRes = await app.fetch(new Request("http://localhost/api/console/graph?project=sideboard"));
     const sideCached = await sideCachedRes.json() as { nodes: Array<{ id: string }> };
     expect(sideCached.nodes.some((node) => node.id === "sideboard-7")).toBe(false);
   });

@@ -4,10 +4,31 @@ vi.mock("../../src/core/jsonl-reader.ts", () => ({
   readIssuesFromJsonl: vi.fn(),
 }));
 
-import { createGraphDao } from "../../src/core/graph-dao.ts";
+import { createGraphDao, resolveProject } from "../../src/core/graph-dao.ts";
+import type { BeadIssue } from "../../src/types/beads.ts";
 import { readIssuesFromJsonl } from "../../src/core/jsonl-reader.ts";
 
 const mockedReadIssuesFromJsonl = vi.mocked(readIssuesFromJsonl);
+
+describe("resolveProject", () => {
+  const projects = [
+    { id: "4c37df93-55bf-44d2-8ddb-9c9d0f237587", name: "gitboard", beadsPath: "/tmp/gitboard" },
+    { id: "sideboard", name: "sideboard", beadsPath: "/tmp/sideboard" },
+  ] as const;
+
+  it("matches project UUID", () => {
+    expect(resolveProject(projects as never, "4c37df93-55bf-44d2-8ddb-9c9d0f237587")?.name).toBe("gitboard");
+  });
+
+  it("matches project name", () => {
+    expect(resolveProject(projects as never, "gitboard")?.id).toBe("4c37df93-55bf-44d2-8ddb-9c9d0f237587");
+  });
+
+  it("returns null when missing", () => {
+    expect(resolveProject(projects as never, "missing")).toBeNull();
+    expect(resolveProject(projects as never, undefined)).toBeNull();
+  });
+});
 
 describe("graph cache identity", () => {
   it("keeps same cache across time, invalidates on epoch bump", async () => {
@@ -79,7 +100,7 @@ describe("graph cache identity", () => {
   });
 });
 
-const baseIssue = {
+const baseIssue: BeadIssue = {
   title: "issue",
   description: null,
   notes: null,
@@ -91,7 +112,7 @@ const baseIssue = {
   created_by: null,
   updated_at: "2026-01-01T00:00:00.000Z",
   closed_at: undefined,
-  close_reason: null,
+  close_reason: undefined,
   project_id: "repo-a",
   dependencies: [],
   related_ids: [],
