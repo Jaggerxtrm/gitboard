@@ -10,14 +10,32 @@ export interface RepoEntry {
   mtimeMs: number;
 }
 
+const REPO_REFRESH_MS = 10_000;
+
+interface CacheEntry<T> {
+  value: T;
+  refreshAt: number;
+}
+
+let repoCache: CacheEntry<RepoEntry[]> | null = null;
+
 export function listRepos(): RepoEntry[] {
+  const cached = repoCache;
+  const now = Date.now();
+  if (cached && cached.refreshAt > now) return cached.value;
+
   const roots = getObservabilityConfig().roots;
-  if (roots.length === 0) return [];
+  if (roots.length === 0) {
+    repoCache = { value: [], refreshAt: now + REPO_REFRESH_MS };
+    return [];
+  }
 
   const candidates = roots.flatMap(scanRoot);
   candidates.sort((left, right) => left.repoPath.localeCompare(right.repoPath));
 
-  return assignSlugs(candidates);
+  const repos = assignSlugs(candidates);
+  repoCache = { value: repos, refreshAt: now + REPO_REFRESH_MS };
+  return repos;
 }
 
 function scanRoot(root: string): Omit<RepoEntry, "repoSlug">[] {
