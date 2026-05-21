@@ -36,6 +36,12 @@ export function MainPane() {
 
   const repo = useMemo(() => (selection.repo ? repos.find((r) => r.fullName === selection.repo) ?? null : null), [selection.repo, repos]);
 
+  useEffect(() => {
+    if (selection.surface !== "github") return;
+    if (!["activity", "prs", "issues", "releases"].includes(selection.tab)) return;
+    performance.mark(`tab_switch:${selection.tab}:start`);
+  }, [selection.surface, selection.tab]);
+
   let inner: ReactNode;
   if (selection.surface === "github") {
     inner = !repo ? <EmptyState repos={repos} onPick={setRepo} surface="github" /> : repo.hasGithub ? <GithubTabView repo={repo} tab={selection.tab as GithubTab} /> : <NoSide side="github" repo={repo.displayName} />;
@@ -240,6 +246,20 @@ function useGithubRepoData(fullName: string, tab: GithubTab): GithubRepoData {
 function GithubTabView({ repo, tab }: { repo: RepoNode; tab: GithubTab }) {
   const data = useGithubRepoData(repo.fullName, tab);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!["activity", "prs", "issues", "releases"].includes(tab)) return;
+    if (data.loading || data.loadingTabs[tab]) return;
+    const startMark = `tab_switch:${tab}:start`;
+    const renderedMark = `tab_switch:${tab}:rendered`;
+    performance.mark(renderedMark);
+    try {
+      performance.measure(`tab_switch:${tab}`, startMark, renderedMark);
+    } catch {
+      // mark missing or duplicate, ignore
+    }
+  }, [data.loading, data.loadingTabs, tab, data.events.length, data.prs.length, data.issues.length, data.releases.length]);
+
   if (data.error) return <p className="ide-error-msg">{data.error}</p>;
   const owner = repo.fullName.includes("/") ? repo.fullName.split("/")[0] : "";
   const name = repo.fullName.includes("/") ? repo.fullName.split("/")[1] : repo.fullName;

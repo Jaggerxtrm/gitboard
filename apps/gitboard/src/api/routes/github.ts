@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { emit, makeLogEntry } from "../../core/logger.ts";
 import type { Database } from "bun:sqlite";
 import {
   getEvents,
@@ -115,6 +116,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
 
   // GET /api/github/events
   app.get("/events", (c) => {
+    const t0 = performance.now();
     const q = c.req.query();
     const repos = q.repos ? q.repos.split(",").map((r) => r.trim()) : undefined;
     const types = q.types ? q.types.split(",").map((t) => t.trim()) : undefined;
@@ -133,7 +135,11 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
       offset,
     });
 
-    return c.json({ data: events, limit, offset });
+    const dbMs = Math.round(performance.now() - t0);
+    const serializeStart = performance.now();
+    const response = c.json({ data: events, limit, offset });
+    emit(makeLogEntry("api", "github.events.timing", "info", undefined, { dbMs, serializeMs: Math.round(performance.now() - serializeStart), rows: events.length }));
+    return response;
   });
 
   // GET /api/github/events/:id
@@ -146,6 +152,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
 
   // GET /api/github/commits
   app.get("/commits", async (c) => {
+    const t0 = performance.now();
     const q = c.req.query();
     const limit = q.limit ? parseInt(q.limit, 10) : 50;
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
@@ -158,7 +165,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
       offset,
     });
 
-    // Lazy-enrich truncated commit messages from GitHub API
+    const dbMs = Math.round(performance.now() - t0);
     try {
       const token = resolveToken();
       await enrichCommitMessages(db, commits, token);
@@ -166,6 +173,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
       // No token or network error — return commits as-is with truncated messages
     }
 
+    emit(makeLogEntry("api", "github.commits.timing", "info", undefined, { dbMs, totalMs: Math.round(performance.now() - t0), rows: commits.length }));
     return c.json({ data: commits, limit, offset });
   });
 
@@ -185,8 +193,13 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
 
   // GET /api/github/repos
   app.get("/repos", (c) => {
+    const t0 = performance.now();
     const repos = getRepos(db);
-    return c.json({ data: repos });
+    const dbMs = Math.round(performance.now() - t0);
+    const serializeStart = performance.now();
+    const response = c.json({ data: repos });
+    emit(makeLogEntry("api", "github.repos.timing", "info", undefined, { dbMs, serializeMs: Math.round(performance.now() - serializeStart), rows: repos.length }));
+    return response;
   });
 
   // POST /api/github/repos
@@ -264,21 +277,31 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
 
   // GET /api/github/prs
   app.get("/prs", (c) => {
+    const t0 = performance.now();
     const q = c.req.query();
     const limit = q.limit ? parseInt(q.limit, 10) : 100;
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
     const prs = getPrs(db, { repo: q.repo, state: q.state, limit, offset });
-    return c.json({ data: prs, limit, offset });
+    const dbMs = Math.round(performance.now() - t0);
+    const serializeStart = performance.now();
+    const response = c.json({ data: prs, limit, offset });
+    emit(makeLogEntry("api", "github.prs.timing", "info", undefined, { dbMs, serializeMs: Math.round(performance.now() - serializeStart), rows: prs.length }));
+    return response;
   });
 
   // GET /api/github/releases
   app.get("/releases", (c) => {
+    const t0 = performance.now();
     const q = c.req.query();
     if (!q.repo) return c.json({ error: "repo is required" }, 400);
     const limit = q.limit ? parseInt(q.limit, 10) : 50;
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
     const releases = getReleases(db, { repo: q.repo, limit, offset });
-    return c.json({ releases });
+    const dbMs = Math.round(performance.now() - t0);
+    const serializeStart = performance.now();
+    const response = c.json({ releases });
+    emit(makeLogEntry("api", "github.releases.timing", "info", undefined, { dbMs, serializeMs: Math.round(performance.now() - serializeStart), rows: releases.length }));
+    return response;
   });
 
   // GET /api/github/prs/:owner/:repo/:number/detail
@@ -288,10 +311,15 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const pr = getPr(db, repo, number);
     if (!pr) return c.json({ error: "not found" }, 404);
 
+    const totalStart = performance.now();
     const cacheKey = prDetailCacheKey(repo, number, pr.updated_at ?? pr.created_at);
     const cached = prDetailCache.get(cacheKey);
     const now = Date.now();
-    if (cached && cached.expires > now) return c.json({ ...cached.value, cached_at: new Date(now).toISOString() });
+    if (cached && cached.expires > now) {
+      emit(makeLogEntry("api", "github.pr_detail.cache", "info", undefined, { repo, number, hit: true }));
+      return c.json({ ...cached.value, cached_at: new Date(now).toISOString() });
+    }
+    emit(makeLogEntry("api", "github.pr_detail.cache", "info", undefined, { repo, number, hit: false }));
 
     type CommentItem = { id: number; user: { login: string } | null; body: string; html_url: string | null; created_at: string; updated_at: string | null };
     type ReviewItem = { id: number; user: { login: string } | null; state: string; body: string | null; html_url: string | null; submitted_at: string | null };
@@ -385,6 +413,13 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
       prDetailCache.set(cacheKey, { value: payload, expires: Date.now() + prDetailCacheTtl(pr) });
       prunePrDetailCache();
     }
+    emit(makeLogEntry("api", "github.pr_detail.timing", "info", undefined, {
+      repo,
+      number,
+      totalMs: Math.round(performance.now() - totalStart),
+      commentsMs: commentsResult.status === "fulfilled" ? undefined : null,
+      errors: Object.keys(errors).length,
+    }));
     return c.json(payload);
   });
 
@@ -399,11 +434,16 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
 
   // GET /api/github/issues
   app.get("/issues", (c) => {
+    const t0 = performance.now();
     const q = c.req.query();
     const limit = q.limit ? parseInt(q.limit, 10) : 100;
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
     const issues = getIssues(db, { repo: q.repo, state: q.state, limit, offset });
-    return c.json({ data: issues, limit, offset });
+    const dbMs = Math.round(performance.now() - t0);
+    const serializeStart = performance.now();
+    const response = c.json({ data: issues, limit, offset });
+    emit(makeLogEntry("api", "github.issues.timing", "info", undefined, { dbMs, serializeMs: Math.round(performance.now() - serializeStart), rows: issues.length }));
+    return response;
   });
 
   // GET /api/github/issues/:owner/:repo/:number

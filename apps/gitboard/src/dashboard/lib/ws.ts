@@ -13,6 +13,21 @@ export type WsMessage = {
 
 export type WsHandler = (msg: WsMessage) => void;
 
+function isWsDebugEnabled(): boolean {
+  try {
+    if (typeof window === "undefined") return false;
+    if ((window as typeof window & { __GITBOARD_DEBUG__?: boolean }).__GITBOARD_DEBUG__ === true) return true;
+    return localStorage.getItem("gitboard:ws-debug") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function wsDebugLog(event: string, data: Record<string, unknown>): void {
+  if (!isWsDebugEnabled()) return;
+  console.info(`[ws] ${event}`, data);
+}
+
 export class WsClient {
   private ws: WebSocket | null = null;
   private subscriptions = new Set<string>();
@@ -22,12 +37,14 @@ export class WsClient {
   private closed = false;
   private lastSeqByChannel = new Map<string, number>();
   private bootId: string | null = null;
+  private connectStartedAt = 0;
 
   constructor(private url: string) {}
 
   connect(): void {
     if (this.ws) return;
     this.closed = false;
+    this.connectStartedAt = performance.now();
     this._open();
   }
 
@@ -35,15 +52,18 @@ export class WsClient {
     try {
       this.ws = new WebSocket(this.url);
     } catch {
-      this._scheduleReconnect();
+      this._scheduleReconnect("open_error");
       return;
     }
 
     this.ws.onopen = () => {
+      const connectMs = Math.round(performance.now() - this.connectStartedAt);
       this.reconnectDelay = 1000;
+      wsDebugLog("connected", { connectMs, subscriptions: this.subscriptions.size });
       for (const channel of this.subscriptions) {
         const since_seq = this.lastSeqByChannel.get(channel) ?? 0;
         if (since_seq > 0 && this.bootId) {
+          wsDebugLog("resume", { channel, since_seq, boot_id: this.bootId });
           this._send({ action: "resume", channel, since_seq, boot_id: this.bootId, version: String(REALTIME_PROTOCOL_VERSION) });
         }
         this._send({ type: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
@@ -54,6 +74,8 @@ export class WsClient {
       try {
         const msg = JSON.parse(evt.data as string) as WsMessage;
         if (msg.type === "event" && msg.channel && typeof msg.seq === "number") {
+          const lastSeq = this.lastSeqByChannel.get(msg.channel) ?? 0;
+          if (msg.seq > lastSeq + 1) wsDebugLog("seq_gap", { channel: msg.channel, lastSeq, seq: msg.seq, gap: msg.seq - lastSeq - 1 });
           this.lastSeqByChannel.set(msg.channel, msg.seq);
           if (msg.boot_id) this.bootId = msg.boot_id;
         }
@@ -65,7 +87,7 @@ export class WsClient {
 
     this.ws.onclose = () => {
       this.ws = null;
-      if (!this.closed) this._scheduleReconnect();
+      if (!this.closed) this._scheduleReconnect("close");
     };
 
     this.ws.onerror = () => {
@@ -73,8 +95,9 @@ export class WsClient {
     };
   }
 
-  private _scheduleReconnect(): void {
+  private _scheduleReconnect(reason: string): void {
     if (this.closed) return;
+    wsDebugLog("reconnect_scheduled", { reason, delayMs: this.reconnectDelay });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
       this._open();

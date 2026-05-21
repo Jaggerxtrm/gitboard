@@ -247,6 +247,7 @@ async function getIssuesFromProject(
   projectId: string,
   filters: { status?: BeadIssue["status"][]; priority?: BeadIssue["priority"][]; search?: string; limit?: number },
 ): Promise<BeadIssue[]> {
+  const startedAt = performance.now();
   const project = getScanner().getProject(projectId);
   if (!project) return [];
 
@@ -258,7 +259,9 @@ async function getIssuesFromProject(
         continue;
       }
       try {
-        return await dolt.client.getIssues(filters);
+        const issues = await dolt.client.getIssues(filters);
+        emit(makeLogEntry("dolt", "beads.source.timing", "info", undefined, { projectId, source: "dolt", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+        return issues;
       } catch (error) {
         degradedSource(project, classifyDoltError(error), "Dolt query failed", { port: dolt.runtime.port, error: error instanceof Error ? error.message : String(error) });
         continue;
@@ -269,7 +272,9 @@ async function getIssuesFromProject(
       const dbPath = (project.sourceHealth ?? []).find((entry) => entry.kind === "sqlite" && entry.path)?.path;
       if (!dbPath) continue;
       try {
-        return await getSqliteReader(dbPath).getIssues(filters);
+        const issues = await getSqliteReader(dbPath).getIssues(filters);
+        emit(makeLogEntry("api", "beads.source.timing", "info", undefined, { projectId, source: "sqlite", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+        return issues;
       } catch {
         continue;
       }
@@ -277,10 +282,12 @@ async function getIssuesFromProject(
   }
 
   const jsonlIssues = await readJsonlIssues(project.beadsPath, projectId);
+  emit(makeLogEntry("api", "beads.source.timing", "info", undefined, { projectId, source: "jsonl", ms: Math.round(performance.now() - startedAt), rows: jsonlIssues.length }));
   return applyIssueFilters(jsonlIssues, filters);
 }
 
 async function getIssueDetailFromProject(projectId: string, issueId: string): Promise<BeadIssueDetail | null> {
+  const startedAt = performance.now();
   const project = getScanner().getProject(projectId);
   if (!project) return null;
 
@@ -293,7 +300,10 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
       }
       try {
         const detail = await dolt.client.getIssue(issueId);
-        if (detail) return withProjectId(detail, projectId);
+        if (detail) {
+          emit(makeLogEntry("dolt", "beads.detail.timing", "info", undefined, { projectId, source: "dolt", ms: Math.round(performance.now() - startedAt), found: true }));
+          return withProjectId(detail, projectId);
+        }
       } catch (error) {
         degradedSource(project, classifyDoltError(error), "Dolt query failed", { port: dolt.runtime.port, error: error instanceof Error ? error.message : String(error) });
         continue;
@@ -305,7 +315,10 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
       if (!dbPath) continue;
       try {
         const detail = await getSqliteReader(dbPath).getIssue(issueId);
-        if (detail) return withProjectId(detail, projectId);
+        if (detail) {
+          emit(makeLogEntry("api", "beads.detail.timing", "info", undefined, { projectId, source: "sqlite", ms: Math.round(performance.now() - startedAt), found: true }));
+          return withProjectId(detail, projectId);
+        }
       } catch {
         continue;
       }
@@ -326,6 +339,7 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
       })),
   );
 
+  emit(makeLogEntry("api", "beads.detail.timing", "info", undefined, { projectId, source: "jsonl", ms: Math.round(performance.now() - startedAt), found: true }));
   return {
     ...issue,
     dependents,
@@ -336,6 +350,7 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
 }
 
 async function getClosedIssuesFromProject(projectId: string, limit: number): Promise<BeadIssue[]> {
+  const startedAt = performance.now();
   const project = getScanner().getProject(projectId);
   if (!project) return [];
 
@@ -347,7 +362,9 @@ async function getClosedIssuesFromProject(projectId: string, limit: number): Pro
         continue;
       }
       try {
-        return await dolt.client.getClosedIssues(limit);
+        const issues = await dolt.client.getClosedIssues(limit);
+        emit(makeLogEntry("dolt", "beads.closed.timing", "info", undefined, { projectId, source: "dolt", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+        return issues;
       } catch (error) {
         degradedSource(project, classifyDoltError(error), "Dolt query failed", { port: dolt.runtime.port, error: error instanceof Error ? error.message : String(error) });
         continue;
@@ -358,7 +375,9 @@ async function getClosedIssuesFromProject(projectId: string, limit: number): Pro
       const dbPath = (project.sourceHealth ?? []).find((entry) => entry.kind === "sqlite" && entry.path)?.path;
       if (!dbPath) continue;
       try {
-        return await getSqliteReader(dbPath).getClosedIssues(limit);
+        const issues = await getSqliteReader(dbPath).getClosedIssues(limit);
+        emit(makeLogEntry("api", "beads.closed.timing", "info", undefined, { projectId, source: "sqlite", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+        return issues;
       } catch {
         continue;
       }
@@ -366,10 +385,12 @@ async function getClosedIssuesFromProject(projectId: string, limit: number): Pro
   }
 
   const jsonlIssues = await readJsonlIssues(project.beadsPath, projectId);
-  return jsonlIssues
+  const issues = jsonlIssues
     .filter((issue) => issue.status === "closed")
     .sort((a, b) => new Date(b.closed_at || b.updated_at).getTime() - new Date(a.closed_at || a.updated_at).getTime())
     .slice(0, limit);
+  emit(makeLogEntry("api", "beads.closed.timing", "info", undefined, { projectId, source: "jsonl", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+  return issues;
 }
 
 async function getStatsFromProject(projectId: string): Promise<{
@@ -381,6 +402,7 @@ async function getStatsFromProject(projectId: string): Promise<{
   by_priority: Record<string, number>;
   by_type: Record<string, number>;
 }> {
+  const startedAt = performance.now();
   const project = getScanner().getProject(projectId);
   if (!project) {
     return { total: 0, open: 0, in_progress: 0, blocked: 0, closed: 0, by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 }, by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 } };
@@ -417,6 +439,7 @@ async function getStatsFromProject(projectId: string): Promise<{
     },
   );
 
+  emit(makeLogEntry("api", "beads.stats.timing", "info", undefined, { projectId, ms: Math.round(performance.now() - startedAt), rows: issues.length }));
   return stats;
 }
 

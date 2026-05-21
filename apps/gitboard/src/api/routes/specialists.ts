@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { emit, makeLogEntry } from "../../core/logger.ts";
 import { createAttachPool } from "../../server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../server/observability/dao.ts";
 import { get as getEpoch } from "../../server/observability/epoch.ts";
@@ -61,8 +62,12 @@ export function createSpecialistsRouter(
     const current = resolve();
     const key = cacheKey("jobs", current.repos, epochGetter, beadId);
     const cached = readCache(jobsByBeadCache, key);
-    if (cached) return c.json({ ...cached, freshness: "fresh" });
+    if (cached) {
+      emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "jobs", hit: true }));
+      return c.json({ ...cached, freshness: "fresh" });
+    }
 
+    emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "jobs", hit: false }));
     void refreshJobsByBead(current.dao, beadId, key).then((value) => { jobsByBeadCache = value; });
     return c.json({ jobs: [], freshness: "stale" });
   });
@@ -72,8 +77,12 @@ export function createSpecialistsRouter(
     const current = resolve();
     const key = cacheKey("in-flight", current.repos, epochGetter, String(limit));
     const cached = readCache(inFlightCache, key);
-    if (cached) return c.json({ ...cached, freshness: "fresh" });
+    if (cached) {
+      emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "in-flight", hit: true }));
+      return c.json({ ...cached, freshness: "fresh" });
+    }
 
+    emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "in-flight", hit: false }));
     void refreshInFlight(current.dao, current.repos, epochGetter, limit, key).then((value) => { inFlightCache = value; });
     return c.json({ in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter), freshness: "stale" });
   });
@@ -83,8 +92,12 @@ export function createSpecialistsRouter(
     const current = resolve();
     const key = cacheKey("chain", current.repos, epochGetter, chainId);
     const cached = readCache(chainCache, key);
-    if (cached) return c.json({ ...cached, freshness: "fresh" });
+    if (cached) {
+      emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "chains", hit: true }));
+      return c.json({ ...cached, freshness: "fresh" });
+    }
 
+    emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "chains", hit: false }));
     void refreshChain(current.dao, chainId, key).then((value) => { chainCache = value; });
     return c.json({ chain: { jobs: [] }, freshness: "stale" });
   });

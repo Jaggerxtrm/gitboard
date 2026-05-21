@@ -18,10 +18,12 @@ export function useWebSocket(channel: string, handler: WsHandler): void {
 
   useEffect(() => {
     const client = getSharedClient();
+    performance.mark(`ws:${channel}:subscribe_start`);
     client.subscribe(channel);
 
     const unsubHandler = client.onMessage((msg) => {
       if (msg.channel === channel) {
+        if (msg.type === "event") performance.mark(`ws:${channel}:first_event`);
         handlerRef.current(msg);
       }
     });

@@ -56,14 +56,17 @@ export function createApp(db: Database): {
 
   app.use("*", cors());
   app.use("*", async (c, next) => {
-    const start = Date.now();
+    const start = performance.now();
     try {
       await next();
     } catch (error) {
       emit(makeLogEntry("api", "request.error", "error", "request failed", { path: c.req.path, error: (error as Error).message }));
       throw error;
     } finally {
-      const ms = Date.now() - start;
+      const ms = Math.round(performance.now() - start);
+      if (c.req.path.startsWith("/api/github") || c.req.path.startsWith("/api/console") || c.req.path.startsWith("/api/beads")) {
+        emit(makeLogEntry("api", "request.timing", "info", undefined, { path: c.req.path, ms, status: c.res.status }));
+      }
       if (ms > 500) emit(makeLogEntry("api", "request.slow", "warn", "slow request", { path: c.req.path, ms }));
       if (c.res.status >= 400) emit(makeLogEntry("api", "request.error", c.res.status >= 500 ? "error" : "warn", "request failed", { path: c.req.path, status: c.res.status }));
     }

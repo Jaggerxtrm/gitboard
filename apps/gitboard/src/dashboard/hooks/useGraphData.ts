@@ -25,14 +25,20 @@ export function useGraphData(projectId: string | null) {
     if (!cached) setState((curr) => ({ ...curr, loading: true, error: null }));
 
     const seq = ++requestSeq.current;
+    const markBase = `graph:${key}:${seq}`;
+    performance.mark(`${markBase}:fetch_start`);
     try {
       const refresh = options.refresh ? "&refresh=true" : "";
       const response = await fetch(`/api/console/graph?project_id=${encodeURIComponent(key)}${refresh}`);
+      performance.mark(`${markBase}:fetch_end`);
       if (!response.ok) throw new Error(`Graph fetch failed (${response.status})`);
       const data = (await response.json()) as GraphResponse;
+      performance.mark(`${markBase}:paint_ready`);
+      performance.measure(`${markBase}:fetch`, `${markBase}:fetch_start`, `${markBase}:fetch_end`);
       CACHE.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
       if (seq === requestSeq.current) setState({ loading: false, error: null, data });
     } catch (error) {
+      performance.mark(`${markBase}:fetch_end`);
       if (seq === requestSeq.current) setState({ loading: false, error: error instanceof Error ? error.message : String(error), data: cached?.data ?? null });
     }
   }, [key]);

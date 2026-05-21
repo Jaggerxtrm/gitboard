@@ -1,4 +1,5 @@
 import { createAttachPool } from "../server/observability/attach-pool.ts";
+import { emit, makeLogEntry } from "./logger.ts";
 import { createObservabilityDao } from "../server/observability/dao.ts";
 import { listRepos } from "../server/observability/registry.ts";
 import { readIssuesFromJsonl } from "./jsonl-reader.ts";
@@ -41,6 +42,7 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
 
   return {
     getGraphSnapshot(projectId: string | null | undefined, includeClosed = false): { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" } {
+      const startedAt = performance.now();
       void warmGraphState(scanner);
       const scan = readCachedProjects(scanner);
       if (!scan) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, [])), freshness: "stale" };
@@ -52,6 +54,7 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
       const dao = getDao();
       const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
       const graph = buildGraph(project, issueState.issues, specialists, includeClosed);
+      emit(makeLogEntry("api", "graph.snapshot.timing", "info", undefined, { projectId: project.id, freshness: issueState.freshness, ms: Math.round(performance.now() - startedAt) }));
       return { graph, freshness: issueState.freshness };
     },
     invalidate(projectId?: string | null): void {
@@ -102,8 +105,12 @@ async function scanProjects(scanner: ProjectScanner): Promise<BeadsProject[]> {
 
 function readCachedProjects(scanner: ProjectScanner): { key: string; projects: BeadsProject[] } | null {
   const cached = projectScanCache.get(scanner);
-  if (!cached) return null;
+  if (!cached) {
+    emit(makeLogEntry("api", "graph.project_cache", "info", undefined, { hit: false }));
+    return null;
+  }
   if (cached.refreshAt <= Date.now()) void scanProjects(scanner);
+  emit(makeLogEntry("api", "graph.project_cache", "info", undefined, { hit: true }));
   return cached.value;
 }
 
@@ -121,8 +128,10 @@ function readCachedIssues(project: BeadsProject): { issues: BeadIssue[]; freshne
   const cached = issueCache.get(key);
   if (cached) {
     if (cached.refreshAt <= Date.now()) void refreshIssues(project);
+    emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, hit: true }));
     return { issues: cached.value.issues, freshness: cached.value.freshness };
   }
+  emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, hit: false }));
   void refreshIssues(project);
   return { issues: [], freshness: "stale" };
 }
@@ -179,17 +188,24 @@ function resolveProject(projects: BeadsProject[], projectId: string | null | und
 }
 
 async function readIssues(project: BeadsProject): Promise<BeadIssue[]> {
+  const startedAt = performance.now();
   if (project.doltPort) {
     const client = new DoltClient({ host: process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1", port: project.doltPort, database: project.doltDatabase ?? "dolt" });
     try {
-      return await client.getIssues({ limit: 1000 });
+      const issues = await client.getIssues({ limit: 1000 });
+      emit(makeLogEntry("dolt", "graph.source.timing", "info", undefined, { projectId: project.id, source: "dolt", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+      return issues;
     } catch {
-      return await readIssuesFromJsonl(project.beadsPath);
+      const issues = await readIssuesFromJsonl(project.beadsPath);
+      emit(makeLogEntry("dolt", "graph.source.timing", "warn", undefined, { projectId: project.id, source: "jsonl", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+      return issues;
     } finally {
       await client.disconnect().catch(() => undefined);
     }
   }
-  return await readIssuesFromJsonl(project.beadsPath);
+  const issues = await readIssuesFromJsonl(project.beadsPath);
+  emit(makeLogEntry("api", "graph.source.timing", "info", undefined, { projectId: project.id, source: "jsonl", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
+  return issues;
 }
 
 function buildGraph(project: BeadsProject, issues: BeadIssue[], specialists: SpecialistJob[], includeClosed: boolean): GraphResponse {
