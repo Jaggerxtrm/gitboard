@@ -8,6 +8,7 @@ import { createAttachPool } from "../../../src/server/observability/attach-pool.
 import { createObservabilityDao } from "../../../src/server/observability/dao.ts";
 import { createGraphDao } from "../../../src/core/graph-dao.ts";
 import { createGraphRouter } from "../../../src/api/routes/graph.ts";
+import { createSpecialistsRouter } from "../../../src/api/routes/specialists.ts";
 import { ProjectScanner } from "../../../src/core/project-scanner.ts";
 import type { BeadsProject } from "../../../../beadboard/src/types/beads.ts";
 
@@ -124,6 +125,22 @@ describe("GET /api/console/graph", () => {
     const sideCached = await sideCachedRes.json() as { nodes: Array<{ id: string }> };
     expect(sideCached.nodes.some((node) => node.id === "sideboard-7")).toBe(false);
   });
+
+  it("keeps graph fast while specialists warms cold attach pool", async () => {
+    const app = createColdParallelApp();
+    const graphRequest = app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
+    const specialistsRequest = app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
+
+    const startedAt = performance.now();
+    const graphResponse = await graphRequest;
+    const graphMs = performance.now() - startedAt;
+
+    expect(graphResponse.status).toBe(200);
+    expect(graphMs).toBeLessThan(300);
+
+    const specialistsResponse = await specialistsRequest;
+    expect(specialistsResponse.status).toBe(200);
+  });
 });
 
 class CountingScanner extends ProjectScanner {
@@ -161,6 +178,24 @@ function createApp(scanner = new ProjectScanner({ searchPath: dir, maxDepth: 2, 
   const dao = createGraphDao({ scanner, observability: createObservabilityDao(pool) });
   const app = new Hono();
   app.route("/api/console/graph", createGraphRouter(dao));
+  return app;
+}
+
+function createColdParallelApp(): Hono {
+  const repos = Array.from({ length: 30 }, (_, index) => {
+    const repoSlug = `cold-${index}`;
+    const dbPath = join(dir, `${repoSlug}.db`);
+    const db = new Database(dbPath, { create: true });
+    db.exec(`CREATE TABLE specialist_jobs (job_id TEXT PRIMARY KEY, bead_id TEXT NOT NULL, chain_id TEXT, epic_id TEXT, chain_kind TEXT, status TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, specialist TEXT);`);
+    db.close();
+    return { repoSlug, repoPath: join(dir, repoSlug), dbPath, mtimeMs: 0 };
+  });
+  const pool = createAttachPool(repos);
+  const observability = createObservabilityDao(pool);
+  const scanner = new ProjectScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git"] });
+  const app = new Hono();
+  app.route("/api/console/graph", createGraphRouter(createGraphDao({ scanner, observability })));
+  app.route("/api/specialists", createSpecialistsRouter(observability, { listRepos: () => repos, getEpoch: () => 0 }));
   return app;
 }
 

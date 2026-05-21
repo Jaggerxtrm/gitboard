@@ -37,37 +37,51 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   const lru = new Map<string, AttachedRepo>();
   const dead = moduleDead;
   let aliasCounter = 0;
+  let warmPromise: Promise<void> | null = null;
+
+  void warmAttachPool();
 
   function withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
-    attachHealthyRepos();
-    try {
-      const list = Array.from(attached.values()).map((entry) => ({ alias: entry.alias, slug: entry.repoSlug }));
-      return fn(db, list);
-    } finally {
-      trimToLimit();
-    }
+    const list = Array.from(attached.values()).map((entry) => ({ alias: entry.alias, slug: entry.repoSlug }));
+    return fn(db, list);
   }
 
-  function attachHealthyRepos(): void {
-    for (const entry of entries) {
-      if (attached.has(entry.dbPath)) {
-        touch(entry.dbPath);
-        continue;
+  async function warmAttachPool(): Promise<void> {
+    if (warmPromise) return warmPromise;
+
+    warmPromise = (async () => {
+      let processed = 0;
+      for (const entry of entries) {
+        if (attached.has(entry.dbPath)) {
+          touch(entry.dbPath);
+          continue;
+        }
+
+        // Skip dbs already known to be unhealthy. We deliberately do NOT re-probe
+        // on mtime change: sp processes write to observability.db continuously
+        // (every turn/event), so mtime ticks up dozens of times per minute. The
+        // failure modes we cache (schema_version incompatible, missing
+        // specialist_jobs table, attach permission errors) are structural — they
+        // don't get fixed by another sp write. Re-probing on every mtime tick
+        // burned 90%+ CPU and starved the rest of the API. If the db is genuinely
+        // upgraded, restart the API.
+        if (dead.has(entry.dbPath)) continue;
+
+        if (!ensureCapacity()) break;
+        if (!attachRepo(entry)) continue;
+
+        processed += 1;
+        if (processed % 5 === 0) {
+          await yieldToEventLoop();
+        }
       }
+    })().catch((err) => {
+      logger.warn(`Attach pool warm failed: ${errorMessage(err)}`);
+    }).finally(() => {
+      warmPromise = null;
+    });
 
-      // Skip dbs already known to be unhealthy. We deliberately do NOT re-probe
-      // on mtime change: sp processes write to observability.db continuously
-      // (every turn/event), so mtime ticks up dozens of times per minute. The
-      // failure modes we cache (schema_version incompatible, missing
-      // specialist_jobs table, attach permission errors) are structural — they
-      // don't get fixed by another sp write. Re-probing on every mtime tick
-      // burned 90%+ CPU and starved the rest of the API. If the db is genuinely
-      // upgraded, restart the API.
-      if (dead.has(entry.dbPath)) continue;
-
-      if (!ensureCapacity()) break;
-      if (!attachRepo(entry)) continue;
-    }
+    return warmPromise;
   }
 
   function ensureCapacity(): boolean {
@@ -107,9 +121,6 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     return true;
   }
 
-  // Cache a dead db with its current mtime. Only log the first time we see this db dead;
-  // subsequent attempts (same mtime) silently skip. The file watcher can fire many times
-  // on a single file change, so the cache stops a runaway log loop.
   function markDead(entry: RepoEntry, reason: string): void {
     const prev = dead.get(entry.dbPath);
     if (!prev || prev.reason !== reason) {
@@ -142,15 +153,11 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     lru.set(dbPath, entry);
   }
 
-  function trimToLimit(): void {
-    while (attached.size > maxAttached) {
-      const oldest = lru.keys().next().value as string | undefined;
-      if (!oldest) break;
-      detachRepo(oldest);
-    }
-  }
-
   return { withAttached };
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 function escapeSql(value: string): string {
