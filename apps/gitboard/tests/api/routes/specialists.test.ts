@@ -205,6 +205,9 @@ function specialistJob(overrides: Partial<Record<"beadId" | "status", string>> =
     updatedAt: "2026-01-01T00:00:00.000Z",
     specialist: "executor",
     lastOutput: null,
+    turns: null,
+    tools: null,
+    model: null,
   };
 }
 
