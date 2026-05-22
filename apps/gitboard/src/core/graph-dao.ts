@@ -18,6 +18,7 @@ let observabilityWarm: Promise<void> | null = null;
 
 const PROJECT_REFRESH_MS = 30_000;
 const ISSUE_REFRESH_MS = 10_000;
+const GRAPH_WARM_TIMEOUT_MS = 750;
 
 interface CacheEntry<T> {
   value: T;
@@ -26,7 +27,7 @@ interface CacheEntry<T> {
 
 const projectScanCache = new WeakMap<ProjectScanner, CacheEntry<{ key: string; projects: BeadsProject[] }>>();
 const projectScanInflight = new WeakMap<ProjectScanner, Promise<BeadsProject[]>>();
-const issueCache = new Map<string, CacheEntry<{ key: string; issues: BeadIssue[] }>>();
+const issueCache = new Map<string, CacheEntry<{ key: string; issues: BeadIssue[]; freshness: "fresh" | "stale" | "degraded" }>>();
 const issueInflight = new Map<string, Promise<void>>();
 const projectIssueEpochs = new Map<string, number>();
 let globalIssueEpoch = 0;
@@ -42,20 +43,22 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
 
   return {
     getGraphSnapshot(projectId: string | null | undefined, includeClosed = false): { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" } {
+      return readGraphSnapshot(scanner, getDao, projectId, includeClosed);
+    },
+    async getGraphSnapshotWarm(projectId: string | null | undefined, includeClosed = false): Promise<{ graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" }> {
+      if (hasCachedGraphSnapshot(scanner, projectId, includeClosed)) return readGraphSnapshot(scanner, getDao, projectId, includeClosed);
+
       const startedAt = performance.now();
-      void warmGraphState(scanner);
-      const scan = readCachedProjects(scanner);
-      if (!scan) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, [])), freshness: "stale" };
+      void getObservabilityDao();
+      const projects = await withTimeout(scanProjects(scanner), GRAPH_WARM_TIMEOUT_MS);
+      if (!projects) return readGraphSnapshot(scanner, getDao, projectId, includeClosed, startedAt);
 
-      const project = resolveProject(scan.projects, projectId);
-      if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, scan.projects)), freshness: "fresh" };
+      const project = resolveProject(projects, projectId);
+      if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, projects)), freshness: "fresh" };
 
-      const issueState = readCachedIssues(project, includeClosed);
-      const dao = getDao();
-      const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
-      const graph = buildGraph(project, issueState.issues, specialists, includeClosed);
-      emit(makeLogEntry("api", "graph.snapshot.timing", "info", undefined, { projectId: project.id, freshness: issueState.freshness, ms: Math.round(performance.now() - startedAt) }));
-      return { graph, freshness: issueState.freshness };
+      const remainingMs = Math.max(0, GRAPH_WARM_TIMEOUT_MS - (performance.now() - startedAt));
+      await withTimeout(refreshIssues(project, includeClosed), remainingMs);
+      return readGraphSnapshot(scanner, getDao, projectId, includeClosed, startedAt);
     },
     invalidate(projectId?: string | null): void {
       projectScanCache.delete(scanner);
@@ -63,6 +66,37 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
       invalidateGraphCache(projectId);
     },
   };
+}
+
+function hasCachedGraphSnapshot(scanner: ProjectScanner, projectId: string | null | undefined, includeClosed: boolean): boolean {
+  const cached = projectScanCache.get(scanner);
+  if (!cached) return false;
+
+  const project = resolveProject(cached.value.projects, projectId);
+  if (!project) return true;
+  return issueCache.has(issueCacheKey(project, includeClosed));
+}
+
+function readGraphSnapshot(
+  scanner: ProjectScanner,
+  getDao: () => ReturnType<typeof createObservabilityDao> | null,
+  projectId: string | null | undefined,
+  includeClosed: boolean,
+  startedAt = performance.now(),
+): { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" } {
+  void warmGraphState(scanner);
+  const scan = readCachedProjects(scanner);
+  if (!scan) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, [])), freshness: "stale" };
+
+  const project = resolveProject(scan.projects, projectId);
+  if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, scan.projects)), freshness: "fresh" };
+
+  const issueState = readCachedIssues(project, includeClosed);
+  const dao = getDao();
+  const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
+  const graph = buildGraph(project, issueState.issues, specialists, includeClosed);
+  emit(makeLogEntry("api", "graph.snapshot.timing", "info", undefined, { projectId: project.id, freshness: issueState.freshness, ms: Math.round(performance.now() - startedAt) }));
+  return { graph, freshness: issueState.freshness };
 }
 
 export function invalidateGraphCache(projectId?: string | null): void {
@@ -85,7 +119,8 @@ export function invalidateGraphCache(projectId?: string | null): void {
 }
 
 async function warmGraphState(scanner: ProjectScanner): Promise<void> {
-  void scanProjects(scanner);
+  const cached = projectScanCache.get(scanner);
+  if (!cached || cached.refreshAt <= Date.now()) void scanProjects(scanner);
   void getObservabilityDao();
 }
 
@@ -318,4 +353,18 @@ function projectFallbackNote(projectId: string | null | undefined, projects: Bea
   if (projectId) return undefined;
   const selected = projects[0]?.name ?? projects[0]?.id;
   return selected ? `fallback:selected-repo:${selected}` : "fallback:no-selected-repo";
+}
+
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  if (timeoutMs <= 0) return null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

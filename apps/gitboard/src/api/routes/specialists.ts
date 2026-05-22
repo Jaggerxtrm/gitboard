@@ -33,6 +33,7 @@ type CachedValue<T> = {
 let defaultBundle: DefaultDaoBundle | null = null;
 let defaultBundleWarm: Promise<void> | null = null;
 const DEFAULT_DAO_REFRESH_MS = 30_000;
+const ROUTE_WARM_TIMEOUT_MS = 750;
 
 export interface SpecialistsRouterOptions {
   listRepos?: () => SpecialistRepoList;
@@ -53,7 +54,7 @@ export function createSpecialistsRouter(
   let inFlightCache: CachedValue<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> }> | null = null;
   let chainCache: CachedValue<{ chain: { jobs: SpecialistChain[] } }> | null = null;
 
-  router.get("/jobs", (c) => {
+  router.get("/jobs", async (c) => {
     const beadId = c.req.query("bead_id");
     if (!beadId) {
       return c.json({ error: "Missing bead_id" }, 400);
@@ -68,11 +69,15 @@ export function createSpecialistsRouter(
     }
 
     emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "jobs", hit: false }));
-    void refreshJobsByBead(current.dao, beadId, key).then((value) => { jobsByBeadCache = value; });
+    const refreshed = await withTimeout(refreshJobsByBead(current.dao, beadId, key), ROUTE_WARM_TIMEOUT_MS);
+    if (refreshed) {
+      jobsByBeadCache = refreshed;
+      return c.json({ ...refreshed.value, freshness: "fresh" });
+    }
     return c.json({ jobs: [], freshness: "stale" });
   });
 
-  router.get("/jobs/in-flight", (c) => {
+  router.get("/jobs/in-flight", async (c) => {
     const limit = parseLimit(c.req.query("limit"), 50);
     const current = resolve();
     const key = cacheKey("in-flight", current.repos, epochGetter, String(limit));
@@ -83,22 +88,32 @@ export function createSpecialistsRouter(
     }
 
     emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "in-flight", hit: false }));
-    void refreshInFlight(current.dao, current.repos, epochGetter, limit, key).then((value) => { inFlightCache = value; });
+    const refreshed = await withTimeout(refreshInFlight(current.dao, current.repos, epochGetter, limit, key), ROUTE_WARM_TIMEOUT_MS);
+    if (refreshed) {
+      inFlightCache = refreshed;
+      return c.json({ ...refreshed.value, freshness: "fresh" });
+    }
     return c.json({ in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter), freshness: "stale" });
   });
 
-  router.get("/chains/:chain_id", (c) => {
+  router.get("/chains/:chain_id", async (c) => {
     const chainId = c.req.param("chain_id");
     const current = resolve();
     const key = cacheKey("chain", current.repos, epochGetter, chainId);
     const cached = readCache(chainCache, key);
     if (cached) {
       emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "chains", hit: true }));
+      if (cached.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
       return c.json({ ...cached, freshness: "fresh" });
     }
 
     emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "chains", hit: false }));
-    void refreshChain(current.dao, chainId, key).then((value) => { chainCache = value; });
+    const refreshed = await withTimeout(refreshChain(current.dao, chainId, key), ROUTE_WARM_TIMEOUT_MS);
+    if (refreshed) {
+      chainCache = refreshed;
+      if (refreshed.value.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
+      return c.json({ ...refreshed.value, freshness: "fresh" });
+    }
     return c.json({ chain: { jobs: [] }, freshness: "stale" });
   });
 
@@ -147,11 +162,14 @@ async function refreshInFlight(
   const refreshableDao = dao as SpecialistsDao & { refreshInFlight?: (limit: number) => Promise<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[] }> };
   const value = refreshableDao.refreshInFlight
     ? await refreshableDao.refreshInFlight(limit)
-    : {
-        in_flight: dao.inFlightJobs().slice(0, 200),
-        recent_history: dao.recentJobs(limit).slice(0, limit),
-        jobs: dao.inFlightJobs().slice(0, 200),
-      };
+    : (() => {
+        const inFlight = dao.inFlightJobs().slice(0, 200);
+        return {
+          in_flight: inFlight,
+          recent_history: dao.recentJobs(limit).slice(0, limit),
+          jobs: inFlight,
+        };
+      })();
   return writeCache(key, { ...value, epoch: repoEpochs(repos, epochGetter) });
 }
 
@@ -181,4 +199,18 @@ async function warmDefaultBundle(repos: SpecialistRepoList, key: string): Promis
 
 function emptySpecialistsDao(): SpecialistsDao {
   return { jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] };
+}
+
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  if (timeoutMs <= 0) return null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
