@@ -69,7 +69,27 @@ describe("WsClient.subscribe", () => {
     mockWs.triggerOpen();
     client.subscribe("github:activity");
     const msg = JSON.parse(mockWs.sent[mockWs.sent.length - 1]);
-    expect(msg).toEqual({ type: "subscribe", channel: "github:activity", version: "1" });
+    expect(msg).toEqual({ action: "subscribe", channel: "github:activity", version: "1" });
+  });
+
+  it("keeps one server subscription for duplicate local subscribes", () => {
+    const client = new WsClient("ws://localhost/ws");
+    client.connect();
+    mockWs.triggerOpen();
+
+    client.subscribe("github:activity");
+    client.subscribe("github:activity");
+
+    const subscribeMessages = mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.action === "subscribe");
+    expect(subscribeMessages).toHaveLength(1);
+
+    client.unsubscribe("github:activity");
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).some((msg) => msg.action === "unsubscribe")).toBe(false);
+
+    client.unsubscribe("github:activity");
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.action === "unsubscribe")).toEqual([
+      { action: "unsubscribe", channel: "github:activity" },
+    ]);
   });
 
   it("re-subscribes on reconnect", () => {
