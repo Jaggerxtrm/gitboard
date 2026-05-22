@@ -54,9 +54,9 @@ describe("useGraphData", () => {
     renderHook(() => useGraphData("gitboard"));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1600); });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1600); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

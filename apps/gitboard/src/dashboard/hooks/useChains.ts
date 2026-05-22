@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useMemo } from "react";
 import type { SpecialistJob } from "../../server/observability/types.ts";
+import { invalidateDashboardResource, useDashboardResource } from "../lib/resource.ts";
 import { useWebSocket } from "./useWebSocket.ts";
 
 interface ChainsResponse {
@@ -8,7 +9,6 @@ interface ChainsResponse {
 }
 
 const POLL_MS = 5000;
-const REFETCH_COALESCE_MS = 1_500; // forge-h830: collapse WS-driven refetch bursts
 
 export type ChainStatus = "running" | "waiting" | "done" | "error" | "cancelled";
 
@@ -38,74 +38,24 @@ export interface UseChainsState {
 }
 
 export function useChains(): UseChainsState {
-  const [jobs, setJobs] = useState<ChainJob[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const timerRef = useRef<number | null>(null);
-  const aliveRef = useRef(true);
-  const visibleRef = useRef(typeof document === "undefined" ? true : document.visibilityState === "visible");
-  const loadRef = useRef<(() => Promise<void>) | null>(null);
-
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      visibleRef.current = document.visibilityState === "visible";
-      if (visibleRef.current) void load();
-      else if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, []);
-
-  async function load() {
-    if (!visibleRef.current) return;
-    try {
+  const resource = useDashboardResource<ChainsResponse>({
+    key: "chains",
+    cacheTtlMs: POLL_MS,
+    pollMs: POLL_MS,
+    fetcher: async (_key, _options) => {
       const res = await fetch("/api/specialists/jobs/in-flight?limit=200");
       if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
-      const data = (await res.json()) as ChainsResponse;
-      if (!aliveRef.current) return;
-      setJobs(normalizeJobs([...(data.in_flight ?? []), ...(data.recent_history ?? [])]));
-      setError(null);
-      setLoading(false);
-      schedule(load, timerRef, POLL_MS);
-    } catch (err) {
-      if (!aliveRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to load specialist chains");
-      setLoading(false);
-      schedule(load, timerRef, POLL_MS);
-    }
-  }
-
-  useEffect(() => {
-    aliveRef.current = true;
-    loadRef.current = load;
-    void load();
-    return () => {
-      aliveRef.current = false;
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  // forge-h830: coalesce burst hints into a single trailing refetch. Without
-  // this, a watcher storm (50+ events/sec) would call loadRef on every hint
-  // and thrash the drawer. The POLL_MS timer above stays as a safety net.
-  const refetchTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (refetchTimer.current !== null) window.clearTimeout(refetchTimer.current);
-  }, []);
-
-  useWebSocket("specialists:activity", () => {
-    if (!aliveRef.current || !visibleRef.current) return;
-    if (refetchTimer.current !== null) return; // already scheduled
-    refetchTimer.current = window.setTimeout(() => {
-      refetchTimer.current = null;
-      if (!aliveRef.current || !visibleRef.current) return;
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-      void loadRef.current?.();
-    }, REFETCH_COALESCE_MS);
+      return res.json() as Promise<ChainsResponse>;
+    },
   });
 
+  useWebSocket("specialists:activity", () => {
+    invalidateDashboardResource("chains");
+  });
+
+  const jobs = useMemo(() => normalizeJobs([...(resource.data?.in_flight ?? []), ...(resource.data?.recent_history ?? [])]), [resource.data]);
   const chains = useMemo(() => groupChains(jobs), [jobs]);
-  return { chains, loading, error };
+  return { chains, loading: resource.loading, error: resource.error };
 }
 
 function normalizeJobs(jobs: Array<SpecialistJob & { lastOutput?: string | null; last_output?: string | null }>): ChainJob[] {
@@ -163,11 +113,4 @@ function compareJobs(a: ChainJob, b: ChainJob): number {
 function excerpt(value: string | null): string {
   const text = (value ?? "").replace(/\s+/g, " ").trim();
   return text.length > 80 ? `${text.slice(0, 77)}…` : text;
-}
-
-function schedule(load: () => Promise<void>, timerRef: MutableRefObject<number | null>, delayMs: number): void {
-  if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-  timerRef.current = window.setTimeout(() => {
-    void load();
-  }, delayMs);
 }
