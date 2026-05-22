@@ -13,18 +13,20 @@ import { getObservabilityConfig } from "../../../src/server/observability/config
 const mockedConfig = getObservabilityConfig as unknown as { mockReturnValue: (value: { roots: string[] }) => void };
 
 async function importRegistry() {
-  return await import("../../../src/server/observability/registry.ts");
+  const registry = await import("../../../src/server/observability/registry.ts");
+  registry.__resetObservabilityRegistryForTests();
+  return registry;
 }
 
 describe("listRepos cache", () => {
+  let now = Date.parse("2025-01-01T00:00:00.000Z");
+
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
-    vi.resetModules();
+    now = Date.parse("2025-01-01T00:00:00.000Z");
+    vi.spyOn(Date, "now").mockImplementation(() => now);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -70,11 +72,54 @@ describe("listRepos cache", () => {
     const { listRepos } = await importRegistry();
 
     listRepos();
-    vi.advanceTimersByTime(10_001);
+    now += 10_001;
     listRepos();
 
     expect(readdirSpy).toHaveBeenCalledTimes(2);
 
     rmSync(root, { recursive: true, force: true });
   });
+  it("discovers modern and legacy specialist database locations", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-observability-"));
+    const modern = join(root, "modern-repo", ".specialists", "db");
+    const legacy = join(root, "legacy-repo", ".specialists");
+    mkdirSync(modern, { recursive: true });
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(modern, "observability.db"), "modern");
+    writeFileSync(join(legacy, "observability.db"), "legacy");
+
+    mockedConfig.mockReturnValue({ roots: [root] });
+
+    const { listRepos } = await importRegistry();
+    const repos = listRepos();
+
+    expect(repos.map((repo) => repo.repoSlug).sort()).toEqual(["legacy-repo", "modern-repo"]);
+    expect(repos.find((repo) => repo.repoSlug === "modern-repo")?.dbPath).toBe(join(modern, "observability.db"));
+    expect(repos.find((repo) => repo.repoSlug === "legacy-repo")?.dbPath).toBe(join(legacy, "observability.db"));
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("discovers repos added after the refresh window", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-observability-"));
+    const first = join(root, "first-repo", ".specialists", "db");
+    mkdirSync(first, { recursive: true });
+    writeFileSync(join(first, "observability.db"), "first");
+
+    mockedConfig.mockReturnValue({ roots: [root] });
+
+    const { listRepos } = await importRegistry();
+    expect(listRepos().map((repo) => repo.repoSlug)).toEqual(["first-repo"]);
+
+    const second = join(root, "second-repo", ".specialists", "db");
+    mkdirSync(second, { recursive: true });
+    writeFileSync(join(second, "observability.db"), "second");
+    expect(listRepos().map((repo) => repo.repoSlug)).toEqual(["first-repo"]);
+
+    now += 10_001;
+    expect(listRepos().map((repo) => repo.repoSlug).sort()).toEqual(["first-repo", "second-repo"]);
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
 });

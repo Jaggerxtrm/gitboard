@@ -7,7 +7,7 @@ export interface ObservabilityConfig {
 }
 
 const DEFAULT_SETTINGS_PATH = join(homedir(), ".config/gitboard/observability.json");
-const DEFAULT_ROOTS = ["~/dev/*"];
+export const DEFAULT_ROOTS = ["~/dev/*", "~/projects/*"];
 
 export function getObservabilityConfig(): ObservabilityConfig {
   const envRoots = parseRoots(process.env.OBSERVABILITY_ROOTS);

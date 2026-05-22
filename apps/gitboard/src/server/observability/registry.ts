@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
-import { join, basename, dirname } from "node:path";
+import { join, basename } from "node:path";
 import { getObservabilityConfig } from "./config.ts";
 
 export interface RepoEntry {
@@ -18,6 +18,10 @@ interface CacheEntry<T> {
 }
 
 let repoCache: CacheEntry<RepoEntry[]> | null = null;
+
+export function __resetObservabilityRegistryForTests(): void {
+  repoCache = null;
+}
 
 export function listRepos(): RepoEntry[] {
   const cached = repoCache;
@@ -38,45 +42,45 @@ export function listRepos(): RepoEntry[] {
   return repos;
 }
 
+const OBSERVABILITY_DB_PATHS = [
+  ".specialists/db/observability.db",
+  ".specialists/observability.db",
+  "observability.db",
+] as const;
+
 function scanRoot(root: string): Omit<RepoEntry, "repoSlug">[] {
-  const repos: Omit<RepoEntry, "repoSlug">[] = [];
+  const repos = new Map<string, Omit<RepoEntry, "repoSlug">>();
 
   try {
     const rootStat = statSync(root);
-    if (!rootStat.isDirectory()) return repos;
-    walk(root, repos);
+    if (!rootStat.isDirectory()) return [];
   } catch {
     console.debug(`[observability] skip unreadable root ${root}`);
-    return repos;
+    return [];
   }
 
-  return repos;
+  addRepoCandidate(root, repos);
+
+  try {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (entry.isDirectory()) addRepoCandidate(join(root, entry.name), repos);
+    }
+  } catch {
+    console.debug(`[observability] skip unreadable root children ${root}`);
+  }
+
+  return [...repos.values()];
 }
 
-function walk(dirPath: string, repos: Omit<RepoEntry, "repoSlug">[]): void {
-  let entries;
-  try {
-    entries = readdirSync(dirPath, { withFileTypes: true });
-  } catch {
-    return;
-  }
-
-  for (const entry of entries) {
-    const entryPath = join(dirPath, entry.name);
-
-    if (entry.isDirectory()) {
-      walk(entryPath, repos);
-      continue;
-    }
-
-    if (entry.name !== "observability.db") continue;
-
+function addRepoCandidate(repoPath: string, repos: Map<string, Omit<RepoEntry, "repoSlug">>): void {
+  for (const relativeDbPath of OBSERVABILITY_DB_PATHS) {
+    const dbPath = join(repoPath, relativeDbPath);
     try {
-      const fileStat = statSync(entryPath);
-      const repoPath = resolveRepoRoot(dirPath);
-      repos.push({ repoPath, dbPath: entryPath, mtimeMs: fileStat.mtimeMs });
+      const fileStat = statSync(dbPath);
+      if (!fileStat.isFile()) continue;
+      repos.set(repoPath, { repoPath, dbPath, mtimeMs: fileStat.mtimeMs });
+      return;
     } catch {
-      console.debug(`[observability] skip unreadable file ${entryPath}`);
       continue;
     }
   }
@@ -93,19 +97,6 @@ function assignSlugs(entries: Omit<RepoEntry, "repoSlug">[]): RepoEntry[] {
     const repoSlug = count === 0 ? baseSlug : `${baseSlug}-${shortHash(entry.repoPath)}`;
     return { ...entry, repoSlug };
   });
-}
-
-function resolveRepoRoot(dbDir: string): string {
-  // observability.db lives at <repo>/.specialists/db/. Strip that suffix to get repo root.
-  let current = dbDir;
-  for (let i = 0; i < 3; i += 1) {
-    const name = basename(current);
-    const parent = dirname(current);
-    if (parent === current) break;
-    if (name === ".specialists") return parent;
-    current = parent;
-  }
-  return dbDir;
 }
 
 function slugify(value: string): string {
