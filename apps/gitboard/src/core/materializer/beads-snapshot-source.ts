@@ -36,6 +36,8 @@ export class BeadsSnapshotSource {
     const current = await this.getCurrentMeta();
     const previous = await this.getLastSuccessfulMeta(sourceKey);
     if (!current || !previous) return false;
+    if (!isDefined(current.dolt_commit_hash) || !isDefined(previous.dolt_commit_hash)) return false;
+    if (!isDefined(current.jsonl_mtime_ms) || !isDefined(previous.jsonl_mtime_ms)) return false;
     return current.dolt_commit_hash === previous.dolt_commit_hash && current.jsonl_mtime_ms === previous.jsonl_mtime_ms;
   }
 
@@ -86,4 +88,8 @@ export class BeadsSnapshotSource {
       }
     }
   }
+}
+
+function isDefined(value: string | number | null): value is string | number {
+  return value !== null;
 }
