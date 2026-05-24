@@ -76,11 +76,17 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentObservabilityWatcher?.stop();
   currentObservabilityWatcher = createObservabilityWatcher(listRepos());
   currentObservabilityWatcher.start();
-  const parityHarness = createObservabilityParityHarness(xtrmDb ?? null);
-  parityHarness.start();
+  // Parity harnesses are shadow-mode diagnostics for the P1/P2 validation
+  // window only. Default OFF in prod; set GITBOARD_ENABLE_PARITY=1 to enable.
+  // Both run on 30s timers and rebuild full-project diffs each cycle (Beads
+  // parity does a filesystem scan + reads up to 1000 issues per project),
+  // which OOM'd prod on first deploy (forge-eorh.47).
+  const parityEnabled = process.env.GITBOARD_ENABLE_PARITY === "1";
+  const parityHarness = createObservabilityParityHarness(xtrmDb ?? null, { enabled: parityEnabled });
+  if (parityEnabled) parityHarness.start();
   currentBeadsParityHarness?.stop();
-  currentBeadsParityHarness = createBeadsParityHarness(xtrmDb ?? null, { enabled: process.env.NODE_ENV !== "test" });
-  currentBeadsParityHarness.start();
+  currentBeadsParityHarness = createBeadsParityHarness(xtrmDb ?? null, { enabled: parityEnabled && process.env.NODE_ENV !== "test" });
+  if (parityEnabled) currentBeadsParityHarness.start();
 
   app.use("*", cors());
   app.use("*", async (c, next) => {

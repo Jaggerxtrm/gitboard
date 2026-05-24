@@ -15,9 +15,18 @@ const PORT = Number(process.env.PORT ?? 3000);
 setLogLevel((process.env.LOG_LEVEL as "debug" | "info" | "warn" | "error" | undefined) ?? "info");
 
 const db = createDatabase(DB_PATH);
-const xtrmDb = createXtrmDatabase(XTRM_DB_PATH);
 console.log(`[gitboard] Database initialized at ${DB_PATH}`);
-console.log(`[xtrm] Database initialized at ${XTRM_DB_PATH}`);
+
+// The xtrm.sqlite materializer path is opt-in via GITBOARD_XTRM_PATH=1.
+// When disabled (default), createApp runs the legacy attach-pool/Dolt paths
+// (identical behavior to commit 33543b2, last known-stable prod). When
+// enabled, the new materializer + parity harnesses + substrate API activate
+// — but cold-start UX (specialists empty until trigger) and parity-harness
+// memory leak (forge-eorh.47) make this dev/staging only until those are fixed.
+const xtrmEnabled = process.env.GITBOARD_XTRM_PATH === "1";
+const xtrmDb = xtrmEnabled ? createXtrmDatabase(XTRM_DB_PATH) : undefined;
+if (xtrmDb) console.log(`[xtrm] Database initialized at ${XTRM_DB_PATH}`);
+else console.log("[xtrm] Disabled — set GITBOARD_XTRM_PATH=1 to enable materializer path");
 
 startServer(db, xtrmDb, { port: PORT });
 
@@ -26,7 +35,7 @@ try {
     console.log("[gitboard] GitHub poller disabled: SKIP_GITHUB_POLLER=1");
     process.on("SIGINT", () => {
       db.close();
-      xtrmDb.close();
+      xtrmDb?.close();
       process.exit(0);
     });
   } else {
@@ -47,7 +56,7 @@ try {
     console.log("\n[gitboard] Shutting down...");
     poller.stop();
     db.close();
-    xtrmDb.close();
+    xtrmDb?.close();
     process.exit(0);
   });
   }
@@ -55,7 +64,7 @@ try {
   console.warn("[gitboard] GitHub poller disabled:", (err as Error).message);
   process.on("SIGINT", () => {
     db.close();
-    xtrmDb.close();
+    xtrmDb?.close();
     process.exit(0);
   });
 }
