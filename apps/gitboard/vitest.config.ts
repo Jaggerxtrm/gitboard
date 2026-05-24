@@ -13,6 +13,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**"],
     reporters: [
       "default",
       new VitestReporter("/home/dawid/dev/gitboard"),

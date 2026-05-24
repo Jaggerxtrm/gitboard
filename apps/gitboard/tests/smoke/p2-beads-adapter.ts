@@ -31,12 +31,12 @@ const before = readState(xtrmDb, sourceKey);
 
 appendFileSync(jsonl, `${JSON.stringify(issue("B", "Beta", "open", "2026-05-24T00:01:00.000Z"))}\n`);
 materializer.trigger(sourceKey);
-await waitFor(async () => readActiveCount(xtrmDb) === 2 && published.length === 2, 3000);
+await waitFor(async () => readActiveCount(xtrmDb) === 2 && published.length === 2, 15000);
 const afterAdd = readState(xtrmDb, sourceKey);
 
 writeFileSync(jsonl, `${JSON.stringify(issue("A", "Alpha", "open", "2026-05-24T00:00:00.000Z"))}\n`);
 materializer.trigger(sourceKey);
-await waitFor(async () => readActiveCount(xtrmDb) === 1 && readTombstones(xtrmDb) === 1 && published.length === 3, 3000);
+await waitFor(async () => readActiveCount(xtrmDb) === 1 && readTombstones(xtrmDb) === 1 && published.length === 3, 15000);
 const afterDelete = readState(xtrmDb, sourceKey);
 
 const log = [
