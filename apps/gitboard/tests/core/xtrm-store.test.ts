@@ -50,4 +50,24 @@ describe("createXtrmDatabase", () => {
 
     db.close();
   });
+
+  it("roundtrips tombstones and reopen", () => {
+    const db = createXtrmDatabase(dbPath);
+
+    db.exec("INSERT INTO substrate_issues (repo_slug, issue_id, state, deleted_at) VALUES ('repo-a', '9', 'open', NULL)");
+    db.exec("UPDATE substrate_issues SET deleted_at = CURRENT_TIMESTAMP WHERE repo_slug='repo-a' AND issue_id='9'");
+
+    const activeRows = db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM substrate_issues WHERE repo_slug='repo-a' AND issue_id='9' AND deleted_at IS NULL").get();
+    expect(activeRows?.c).toBe(0);
+
+    const allRows = db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM substrate_issues WHERE repo_slug='repo-a' AND issue_id='9'").get();
+    expect(allRows?.c).toBe(1);
+
+    db.exec("INSERT INTO substrate_issues (repo_slug, issue_id, state, deleted_at) VALUES ('repo-a', '9', 'open', NULL) ON CONFLICT(repo_slug, issue_id) DO UPDATE SET deleted_at = excluded.deleted_at, state = excluded.state");
+
+    const reopenedRows = db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM substrate_issues WHERE repo_slug='repo-a' AND issue_id='9' AND deleted_at IS NULL").get();
+    expect(reopenedRows?.c).toBe(1);
+
+    db.close();
+  });
 });

@@ -31,10 +31,10 @@ CREATE TABLE IF NOT EXISTS substrate_issues (
 CREATE TABLE IF NOT EXISTS substrate_dependencies (
   repo_slug      TEXT NOT NULL,
   issue_id       TEXT NOT NULL,
-  dependency_id  TEXT NOT NULL,
+  dep_issue_id   TEXT NOT NULL,
   relation       TEXT NOT NULL,
   created_at     DATETIME,
-  PRIMARY KEY (repo_slug, issue_id)
+  PRIMARY KEY (repo_slug, issue_id, dep_issue_id)
 );
 
 CREATE TABLE IF NOT EXISTS specialist_jobs (
@@ -64,10 +64,11 @@ CREATE TABLE IF NOT EXISTS specialist_job_events (
 CREATE TABLE IF NOT EXISTS substrate_job_link (
   repo_slug      TEXT NOT NULL,
   job_id         TEXT NOT NULL,
+  issue_id       TEXT NOT NULL,
   substrate_type TEXT NOT NULL,
   substrate_id   TEXT NOT NULL,
   created_at     DATETIME,
-  PRIMARY KEY (repo_slug, job_id)
+  PRIMARY KEY (repo_slug, job_id, issue_id)
 );
 
 CREATE TABLE IF NOT EXISTS sources (
@@ -82,7 +83,7 @@ CREATE TABLE IF NOT EXISTS sources (
 
 CREATE TABLE IF NOT EXISTS materialization_state (
   source_key        TEXT PRIMARY KEY,
-  cursor            TEXT,
+  cursor            TEXT CHECK (cursor IS NULL OR json_valid(cursor)),
   last_run_at       DATETIME,
   last_success_at   DATETIME,
   last_status       TEXT,
