@@ -30,3 +30,6 @@ e4494c9598b9
 .xtrm/worktrees/gitboard-xt-pi-5zrh/
 # bd worktree
 .xtrm/worktrees/gitboard-xt-claude-1ers/
+
+# Smoke test scratch dirs
+.tmp-*/
