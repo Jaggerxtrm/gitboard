@@ -35,7 +35,6 @@ let currentRegistry: ChannelRegistry | null = null;
 let currentWatcher: BeadsChangeWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
 let currentMaterializer: Materializer | null = null;
-let currentParityHarness: ReturnType<typeof createObservabilityParityHarness> | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
@@ -45,9 +44,6 @@ export function getCurrentMaterializer(): Materializer | null {
   return currentMaterializer;
 }
 
-export function getCurrentParityHarness(): ReturnType<typeof createObservabilityParityHarness> | null {
-  return currentParityHarness;
-}
 
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
 const gitboardDist = join(repoRoot, "apps/gitboard/dist/dashboard");
@@ -78,9 +74,8 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentObservabilityWatcher?.stop();
   currentObservabilityWatcher = createObservabilityWatcher(listRepos());
   currentObservabilityWatcher.start();
-  currentParityHarness?.stop();
-  currentParityHarness = createObservabilityParityHarness(xtrmDb ?? null);
-  currentParityHarness.start();
+  const parityHarness = createObservabilityParityHarness(xtrmDb ?? null);
+  parityHarness.start();
 
   app.use("*", cors());
   app.use("*", async (c, next) => {
@@ -100,6 +95,11 @@ export function createApp(db: Database, xtrmDb?: Database): {
     }
   });
 
+  app.use("*", async (c, next) => {
+    c.set("parityHarness", parityHarness);
+    await next();
+  });
+
   // Health check
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -114,7 +114,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
   app.route("/api/internal", createInternalVerifyRouter());
-  app.route("/api/internal", createInternalParityRouter(() => currentParityHarness));
+  app.route("/api/internal", createInternalParityRouter());
 
   // Serve built dashboards in production
   if (process.env.NODE_ENV === "production") {
@@ -219,10 +219,9 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
   });
 
   const stopObservability = currentObservabilityWatcher;
-  const stopParity = currentParityHarness;
   process.once("exit", () => {
     stopObservability?.stop();
-    stopParity?.stop();
+    parityHarness.stop();
   });
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);

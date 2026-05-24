@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { createAttachPool } from "../../server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../server/observability/dao.ts";
 import { listRepos } from "../../server/observability/registry.ts";
-import { emit, makeLogEntry } from "../../core/logger.ts";
+import { emit, getRing, makeLogEntry } from "../../core/logger.ts";
 import type { SpecialistJob } from "../../server/observability/types.ts";
 
 export type ParitySeverity = "info" | "warn" | "error";
@@ -28,9 +28,16 @@ export type ParitySummary = {
   diffs: ParityDiff[];
 };
 
+export type ParityDao = {
+  jobsByBead(beadId: string): SpecialistJob[];
+  inFlightJobs(): SpecialistJob[];
+  recentJobs(limit: number): SpecialistJob[];
+};
+
 export type ParityHarness = {
   start(): void;
   stop(): void;
+  tick(): Promise<ParitySummary>;
   runOnce(): Promise<ParitySummary>;
   getLatestSummary(): ParitySummary | null;
   getParityOkCount(): number;
@@ -39,17 +46,20 @@ export type ParityHarness = {
 const DEFAULT_INTERVAL_MS = 30_000;
 const MAX_REPORTED_DIFFS = 50;
 
-export function createObservabilityParityHarness(xtrmDb: Database | null, options: { intervalMs?: number; enabled?: boolean } = {}): ParityHarness {
+export function createObservabilityParityHarness(
+  xtrmDb: Database | null,
+  options: { intervalMs?: number; enabled?: boolean; liveDao?: ParityDao; shadowDao?: ParityDao } = {},
+): ParityHarness {
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
-  const enabled = options.enabled ?? Boolean(xtrmDb);
-  const liveDao = createObservabilityDao(createAttachPool(listRepos()));
-  const shadowDao = xtrmDb ? createShadowDao(xtrmDb) : null;
+  const enabled = options.enabled ?? Boolean(xtrmDb || options.shadowDao);
+  const liveDao = options.liveDao ?? createObservabilityDao(createAttachPool(listRepos()));
+  const shadowDao = options.shadowDao ?? (xtrmDb ? createShadowDao(xtrmDb) : null);
 
   let timer: ReturnType<typeof setInterval> | null = null;
   let latestSummary: ParitySummary | null = null;
   let parityOkCount = 0;
 
-  async function runOnce(): Promise<ParitySummary> {
+  async function tick(): Promise<ParitySummary> {
     const started_at = new Date().toISOString();
     const diffs: ParityDiff[] = [];
     const checks: ParitySummary["checks"] = {};
@@ -96,9 +106,9 @@ export function createObservabilityParityHarness(xtrmDb: Database | null, option
 
   function start(): void {
     if (!enabled || timer) return;
-    void runOnce().catch(reportError);
+    void tick().catch(reportError);
     timer = setInterval(() => {
-      void runOnce().catch(reportError);
+      void tick().catch(reportError);
     }, intervalMs);
   }
 
@@ -110,7 +120,8 @@ export function createObservabilityParityHarness(xtrmDb: Database | null, option
   return {
     start,
     stop,
-    runOnce,
+    tick,
+    runOnce: tick,
     getLatestSummary: () => latestSummary,
     getParityOkCount: () => parityOkCount,
   };
