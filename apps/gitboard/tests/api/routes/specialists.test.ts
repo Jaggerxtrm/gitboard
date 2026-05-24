@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { Hono } from "hono";
+import { createApp } from "../../../src/api/server.ts";
 import { createSpecialistsRouter } from "../../../src/api/routes/specialists.ts";
+import { __resetObservabilityRegistryForTests } from "../../../src/server/observability/registry.ts";
 import { createAttachPool } from "../../../src/server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../../src/server/observability/dao.ts";
 
@@ -28,6 +30,7 @@ let repos: RepoSeed[];
 let openDbs: Database[];
 
 beforeEach(async () => {
+  __resetObservabilityRegistryForTests();
   dir = await mkdtemp(join(tmpdir(), "gitboard-specialists-"));
   repos = [
     {
@@ -54,6 +57,7 @@ beforeEach(async () => {
 afterEach(async () => {
   for (const db of openDbs) db.close();
   await rm(dir, { recursive: true, force: true });
+  __resetObservabilityRegistryForTests();
 });
 
 describe("GET /api/specialists/jobs", () => {
@@ -193,6 +197,130 @@ describe("GET /api/specialists/chains/:chain_id", () => {
     expect(json.chain.jobs.every((job) => job.repoSlug === "repo-a")).toBe(true);
   });
 });
+
+describe("createApp cold-start materializer", () => {
+  it("triggers initial observability materialization on boot", async () => {
+    const rootsDir = await mkdtemp(join(tmpdir(), "gitboard-obs-root-"));
+    const repoDir = join(rootsDir, "repo-one");
+    await Bun.write(join(repoDir, ".keep"), "");
+    const obsDb = new Database(join(repoDir, "observability.db"), { create: true });
+    obsDb.exec(`
+      CREATE TABLE specialist_jobs (
+        repo_slug TEXT NOT NULL,
+        job_id TEXT NOT NULL,
+        specialist TEXT,
+        status TEXT NOT NULL,
+        chain_id TEXT,
+        epic_id TEXT,
+        chain_kind TEXT,
+        worktree TEXT,
+        last_output TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        updated_at_ms INTEGER,
+        PRIMARY KEY (repo_slug, job_id)
+      );
+      CREATE TABLE specialist_job_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        repo_slug TEXT NOT NULL,
+        job_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        payload TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, updated_at_ms) VALUES ('repo-one', 'job-1', 'explorer', 'running', 1);
+      CREATE TABLE materialization_state (
+        source_key TEXT PRIMARY KEY,
+        cursor TEXT,
+        last_run_at DATETIME,
+        last_success_at DATETIME,
+        last_status TEXT,
+        last_error TEXT
+      );
+    `);
+    obsDb.close();
+    process.env.OBSERVABILITY_ROOTS = rootsDir;
+
+    const xtrmDb = new Database(":memory:");
+    xtrmDb.exec(`
+      CREATE TABLE sources (
+        source_key TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        path TEXT,
+        origin TEXT,
+        status TEXT,
+        discovered_at DATETIME,
+        last_seen_at DATETIME
+      );
+      CREATE TABLE materialization_state (
+        source_key TEXT PRIMARY KEY,
+        cursor TEXT,
+        last_run_at DATETIME,
+        last_success_at DATETIME,
+        last_status TEXT,
+        last_error TEXT
+      );
+      CREATE TABLE specialist_jobs (
+        repo_slug TEXT NOT NULL,
+        job_id TEXT NOT NULL,
+        specialist TEXT,
+        status TEXT NOT NULL,
+        chain_id TEXT,
+        epic_id TEXT,
+        chain_kind TEXT,
+        worktree TEXT,
+        last_output TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        updated_at_ms INTEGER,
+        PRIMARY KEY (repo_slug, job_id)
+      );
+    `);
+
+    createApp(new Database(":memory:"), xtrmDb);
+    await new Promise((resolve) => setTimeout(resolve, 1700));
+
+    const row = xtrmDb.query("SELECT last_status, source_key FROM materialization_state WHERE source_key = ?").get("obs:repo-one") as { last_status: string; source_key: string } | undefined;
+    expect(row).toEqual({ source_key: "obs:repo-one", last_status: "success" });
+
+    xtrmDb.close();
+    await rm(rootsDir, { recursive: true, force: true });
+    delete process.env.OBSERVABILITY_ROOTS;
+  });
+});
+
+function createSpecialistsHybridApp(success = false): Hono {
+  const xtrmDb = new Database(":memory:");
+  xtrmDb.exec(`
+    CREATE TABLE specialist_jobs (
+      job_id TEXT PRIMARY KEY,
+      bead_id TEXT NOT NULL,
+      chain_id TEXT,
+      epic_id TEXT,
+      chain_kind TEXT,
+      status TEXT NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      specialist TEXT
+    );
+    CREATE TABLE materialization_state (
+      source_key TEXT PRIMARY KEY,
+      cursor TEXT,
+      last_run_at DATETIME,
+      last_success_at DATETIME,
+      last_status TEXT,
+      last_error TEXT
+    );
+  `);
+  xtrmDb.prepare("INSERT INTO specialist_jobs (job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("job-xtrm", "bead-xtrm", null, null, null, "running", 1, "explorer");
+  if (success) xtrmDb.query("INSERT INTO materialization_state (source_key, last_status, last_success_at) VALUES (?, 'success', CURRENT_TIMESTAMP)").run("obs:repo-xtrm");
+
+  const app = new Hono();
+  app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb, {
+    listRepos: () => [{ repoSlug: "repo-a", repoPath: join(dir, "repo-a"), dbPath: join(dir, "repo-a.db"), mtimeMs: 0 }],
+    getEpoch: () => 0,
+  }));
+  return app;
+}
 
 function specialistJob(overrides: Partial<Record<"beadId" | "status", string>> = {}) {
   return {

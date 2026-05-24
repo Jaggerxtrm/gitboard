@@ -43,7 +43,7 @@ type XtrmSpecialistsDao = SpecialistsDao & {
 };
 
 let defaultBundle: DefaultDaoBundle | null = null;
-let defaultBundleWarm: Promise<void> | null = null;
+let defaultBundleWarm: { key: string; promise: Promise<void> } | null = null;
 
 export interface SpecialistsRouterOptions {
   listRepos?: () => SpecialistRepoList;
@@ -52,19 +52,28 @@ export interface SpecialistsRouterOptions {
 
 export function createSpecialistsRouter(
   dao?: SpecialistsDao,
-  xtrmDb?: import("bun:sqlite").Database,
+  xtrmDb?: import("bun:sqlite").Database | SpecialistsRouterOptions,
   options: SpecialistsRouterOptions = {},
 ): Hono {
   const router = new Hono();
-  const repoLister = options.listRepos ?? listRepos;
-  const epochGetter = options.getEpoch ?? getEpoch;
-  const xtrmDao = xtrmDb ? createXtrmSpecialistsDao(xtrmDb, repoLister, epochGetter) : null;
+  const resolvedOptions = isSpecialistsRouterOptions(xtrmDb) ? xtrmDb : options;
+  const xtrmDatabase = isSpecialistsRouterOptions(xtrmDb) ? undefined : xtrmDb;
+  const repoLister = resolvedOptions.listRepos ?? listRepos;
+  const epochGetter = resolvedOptions.getEpoch ?? getEpoch;
+  const xtrmDao = xtrmDatabase ? createXtrmSpecialistsDao(xtrmDatabase, repoLister, epochGetter) : null;
   const liveFallbackEnabled = process.env.GITBOARD_SPECIALISTS_LIVE_FALLBACK === "1";
-  const resolve = () => dao
-    ? { dao, repos: summarizeRepos(repoLister()) }
-    : xtrmDao && !liveFallbackEnabled
+  const getSourceHealth = () => {
+    if (dao) return makeSourceHealth("specialists", "fresh", { metadata: {} });
+    return sourceHealthFromState(xtrmDao?.materializationState());
+  };
+  const resolve = () => {
+    if (dao) return { dao, repos: summarizeRepos(repoLister()) };
+    if (!xtrmDao) return getDefaultBundle(repoLister, epochGetter);
+    if (liveFallbackEnabled) return { dao: xtrmDao, repos: summarizeRepos(repoLister()) };
+    return hasSuccessfulObsMaterialization(xtrmDao.materializationState())
       ? { dao: xtrmDao, repos: summarizeRepos(repoLister()) }
       : getDefaultBundle(repoLister, epochGetter);
+  };
   let jobsByBeadCache: CachedValue<{ jobs: SpecialistJob[] }> | null = null;
   let inFlightCache: CachedValue<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> }> | null = null;
   let chainCache: CachedValue<{ chain: { jobs: SpecialistChain[] } }> | null = null;
@@ -79,13 +88,13 @@ export function createSpecialistsRouter(
     const cached = readCache(jobsByBeadCache, key);
     if (cached) {
       logJobsByBeadResponse(beadId, cached.jobs, "cache", startedAt);
-      return c.json({ ...cached, freshness: "fresh", source_health: sourceHealthFromState(xtrmDao?.materializationState?.()) });
+      return c.json({ ...cached, freshness: "fresh", source_health: getSourceHealth() });
     }
 
     const refreshed = await refreshJobsByBead(current.dao, beadId, key);
     jobsByBeadCache = refreshed;
     logJobsByBeadResponse(beadId, refreshed.value.jobs, "fresh", startedAt);
-    return c.json({ ...refreshed.value, freshness: "fresh", source_health: sourceHealthFromState(xtrmDao?.materializationState?.()) });
+    return c.json({ ...refreshed.value, freshness: "fresh", source_health: getSourceHealth() });
   });
 
   router.get("/jobs/in-flight", async (c) => {
@@ -96,13 +105,13 @@ export function createSpecialistsRouter(
     const cached = readCache(inFlightCache, key);
     if (cached) {
       logInFlightResponse(cached.jobs, cached.recent_history, cached.epoch, "cache", startedAt);
-      return c.json({ ...cached, freshness: "fresh", source_health: sourceHealthFromState(xtrmDao?.materializationState?.()) });
+      return c.json({ ...cached, freshness: "fresh", source_health: getSourceHealth() });
     }
 
     const refreshed = await refreshInFlight(current.dao, current.repos, epochGetter, limit, key);
     inFlightCache = refreshed;
     logInFlightResponse(refreshed.value.jobs, refreshed.value.recent_history, refreshed.value.epoch, "fresh", startedAt);
-    return c.json({ ...refreshed.value, freshness: "fresh", source_health: sourceHealthFromState(xtrmDao?.materializationState?.()) });
+    return c.json({ ...refreshed.value, freshness: "fresh", source_health: getSourceHealth() });
   });
 
   router.get("/chains/:chain_id", async (c) => {
@@ -112,22 +121,36 @@ export function createSpecialistsRouter(
     const cached = readCache(chainCache, key);
     if (cached) {
       if (cached.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
-      return c.json({ ...cached, freshness: "fresh", source_health: sourceHealthFromState(xtrmDao?.materializationState?.()) });
+      return c.json({ ...cached, freshness: "fresh", source_health: getSourceHealth() });
     }
 
     const refreshed = await refreshChain(current.dao, chainId, key);
     chainCache = refreshed;
     if (refreshed.value.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
-    return c.json({ ...refreshed.value, freshness: "fresh", source_health: sourceHealthFromState(xtrmDao?.materializationState?.()) });
+    return c.json({ ...refreshed.value, freshness: "fresh", source_health: getSourceHealth() });
   });
 
   return router;
 }
 
+function getSourceHealth() {
+  return makeSourceHealth("specialists", "fresh", { metadata: {} });
+}
+
 function sourceHealthFromState(rows: MaterializationStateRow[] | undefined) {
-  const latest = rows?.filter((row) => row.source_key.startsWith("obs:")).sort((left, right) => Date.parse(right.last_success_at ?? "") - Date.parse(left.last_success_at ?? ""))[0];
-  const status = latest?.last_status === "success" ? "fresh" : "stale";
-  return makeSourceHealth("specialists", status, { metadata: latest ? { source_key: latest.source_key, last_status: latest.last_status, last_success_at: latest.last_success_at } : {} });
+  if (!rows || rows.length === 0) return makeSourceHealth("specialists", "degraded", { metadata: {} });
+  if (rows.some((row) => row.last_status === "error")) return makeSourceHealth("specialists", "unhealthy", { metadata: summarizeMaterializationState(rows) });
+  if (rows.every((row) => row.last_status === "success")) return makeSourceHealth("specialists", "fresh", { metadata: summarizeMaterializationState(rows) });
+  return makeSourceHealth("specialists", "degraded", { metadata: summarizeMaterializationState(rows) });
+}
+
+function summarizeMaterializationState(rows: MaterializationStateRow[]): Record<string, unknown> {
+  const latest = rows.filter((row) => row.source_key.startsWith("obs:")).sort((left, right) => Date.parse(right.last_success_at ?? "") - Date.parse(left.last_success_at ?? ""))[0];
+  return latest ? { source_key: latest.source_key, last_status: latest.last_status, last_success_at: latest.last_success_at } : {};
+}
+
+function hasSuccessfulObsMaterialization(rows: MaterializationStateRow[]): boolean {
+  return rows.some((row) => row.source_key.startsWith("obs:") && row.last_status === "success");
 }
 
 function createXtrmSpecialistsDao(db: import("bun:sqlite").Database, repoLister: () => SpecialistRepoList, epochGetter: (repoSlug: string) => number): XtrmSpecialistsDao {
@@ -135,7 +158,7 @@ function createXtrmSpecialistsDao(db: import("bun:sqlite").Database, repoLister:
     jobsByBead: (beadId) => loadJobs(db, `WHERE l.issue_id = ?`, [beadId]),
     inFlightJobs: () => loadJobs(db, `WHERE j.status IN ("starting", "running", "waiting")`, []),
     recentJobs: (limit) => loadJobs(db, `WHERE j.status IN ("done", "error", "cancelled")`, []).slice(0, limit),
-    chainById: (chainId) => loadJobs(db, `WHERE j.chain_id = ?`, [chainId]),
+    chainById: (chainId) => loadJobs(db, `WHERE j.chain_id = ?`, [chainId]) as unknown as SpecialistChain[],
     inFlightWithRecent: (limit) => {
       const repos = summarizeRepos(repoLister());
       const epoch = repoEpochs(repos, epochGetter);
@@ -257,7 +280,7 @@ function writeCache<T>(key: string, value: T): CachedValue<T> {
   return { key, value, refreshedAt: Date.now() };
 }
 
-async function refreshJobsByBead(dao: SpecialistsDao, beadId: string, key: string): Promise<CachedValue<{ jobs: SpecialistJob[] }>> {
+function refreshJobsByBead(dao: SpecialistsDao, beadId: string, key: string): CachedValue<{ jobs: SpecialistJob[] }> {
   return writeCache(key, { jobs: dao.jobsByBead(beadId) });
 }
 
@@ -282,7 +305,7 @@ async function refreshInFlight(
   return writeCache(key, value);
 }
 
-async function refreshChain(dao: SpecialistsDao, chainId: string, key: string): Promise<CachedValue<{ chain: { jobs: SpecialistChain[] } }>> {
+function refreshChain(dao: SpecialistsDao, chainId: string, key: string): CachedValue<{ chain: { jobs: SpecialistChain[] } }> {
   return writeCache(key, { chain: { jobs: dao.chainById(chainId) } });
 }
 
@@ -298,14 +321,21 @@ function getDefaultBundle(repoLister: () => SpecialistRepoList, epochGetter: (re
 }
 
 async function warmDefaultBundle(repos: SpecialistRepoList, key: string): Promise<void> {
-  if (defaultBundleWarm) return;
-  defaultBundleWarm = Promise.resolve().then(() => {
+  if (defaultBundleWarm?.key === key) return;
+  const promise = Promise.resolve().then(() => {
     const pool: AttachPoolLike = createAttachPool(repos);
     defaultBundle = { dao: createObservabilityDao(pool), repos: summarizeRepos(repos), createdAt: Date.now(), key };
-  }).catch(() => undefined).finally(() => { defaultBundleWarm = null; });
-  await defaultBundleWarm;
+  }).catch(() => undefined).finally(() => {
+    if (defaultBundleWarm?.key === key) defaultBundleWarm = null;
+  });
+  defaultBundleWarm = { key, promise };
+  await promise;
 }
 
 function emptySpecialistsDao(): SpecialistsDao {
   return { jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] };
+}
+
+function isSpecialistsRouterOptions(value: unknown): value is SpecialistsRouterOptions {
+  return typeof value === "object" && value !== null && ("listRepos" in value || "getEpoch" in value);
 }

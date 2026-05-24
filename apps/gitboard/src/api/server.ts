@@ -38,6 +38,7 @@ let currentWatcher: TriggerWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
 let currentMaterializer: Materializer | null = null;
 let currentBeadsParityHarness: ReturnType<typeof createBeadsParityHarness> | null = null;
+let currentObservabilityParityHarness: ReturnType<typeof createObservabilityParityHarness> | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
@@ -51,30 +52,38 @@ const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), 
 const gitboardDist = join(repoRoot, "apps/gitboard/dist/dashboard");
 // beadboardDist removed (forge-5w9.9) — frontend deprecated; /beadboard redirects to /gitboard.
 
+type AppVariables = {
+  parityHarness: ReturnType<typeof createObservabilityParityHarness> | null;
+};
+
 export function createApp(db: Database, xtrmDb?: Database): {
-  app: Hono;
+  app: Hono<{ Variables: AppVariables }>;
   registry: ChannelRegistry;
   wsHandler: WsHandler;
   materializer: Materializer | null;
 } {
-  const app = new Hono();
+  const app = new Hono<{ Variables: AppVariables }>();
   const registry = new ChannelRegistry();
   currentRegistry = registry;
   const materializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
   currentMaterializer = materializer;
+  const obsRepos = listRepos();
   if (materializer && xtrmDb) {
-    for (const repo of listRepos()) {
+    for (const repo of obsRepos) {
       const sourceKey = `obs:${repo.repoSlug}`;
       xtrmDb.query("INSERT INTO sources (source_key, kind, path, origin, status, discovered_at, last_seen_at) VALUES (?, 'observability', ?, 'discovered', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(source_key) DO UPDATE SET path=excluded.path, status=excluded.status, last_seen_at=excluded.last_seen_at").run(sourceKey, repo.dbPath);
       materializer.register(sourceKey, createObservabilityAdapter(repo.dbPath, repo.repoSlug));
     }
+    queueMicrotask(() => {
+      for (const repo of obsRepos) materializer.trigger(`obs:${repo.repoSlug}`);
+    });
   }
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);
   if (materializer && xtrmDb) currentWatcher = new TriggerWatcher(materializer, xtrmDb, registry);
   currentWatcher?.start();
   currentObservabilityWatcher?.stop();
-  currentObservabilityWatcher = createObservabilityWatcher(listRepos());
+  currentObservabilityWatcher = createObservabilityWatcher(obsRepos);
   currentObservabilityWatcher.start();
   // Parity harnesses are shadow-mode diagnostics for the P1/P2 validation
   // window only. Default OFF in prod; set GITBOARD_ENABLE_PARITY=1 to enable.
@@ -82,8 +91,9 @@ export function createApp(db: Database, xtrmDb?: Database): {
   // parity does a filesystem scan + reads up to 1000 issues per project),
   // which OOM'd prod on first deploy (forge-eorh.47).
   const parityEnabled = process.env.GITBOARD_ENABLE_PARITY === "1";
-  const parityHarness = createObservabilityParityHarness(xtrmDb ?? null, { enabled: parityEnabled });
-  if (parityEnabled) parityHarness.start();
+  currentObservabilityParityHarness?.stop();
+  currentObservabilityParityHarness = createObservabilityParityHarness(xtrmDb ?? null, { enabled: parityEnabled });
+  if (parityEnabled) currentObservabilityParityHarness.start();
   currentBeadsParityHarness?.stop();
   currentBeadsParityHarness = createBeadsParityHarness(xtrmDb ?? null, { enabled: parityEnabled && process.env.NODE_ENV !== "test" });
   if (parityEnabled) currentBeadsParityHarness.start();
@@ -107,7 +117,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   });
 
   app.use("*", async (c, next) => {
-    c.set("parityHarness", parityHarness);
+    c.set("parityHarness", currentObservabilityParityHarness);
     await next();
   });
 
@@ -237,7 +247,7 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
   const stopObservability = currentObservabilityWatcher;
   process.once("exit", () => {
     stopObservability?.stop();
-    parityHarness.stop();
+    currentObservabilityParityHarness?.stop();
     currentBeadsParityHarness?.stop();
   });
 
