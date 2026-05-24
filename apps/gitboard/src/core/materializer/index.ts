@@ -85,6 +85,10 @@ export class Materializer {
       const repoSlug = sourceKey.slice(4);
       return { channels: ["specialists:activity", `specialists:repo:${repoSlug}`], event: "specialists:sync_hint" };
     }
+    if (sourceKey.startsWith("beads:")) {
+      const projectId = sourceKey.slice(6);
+      return { channels: ["beads:changes", `beads:project:${projectId}`], event: "beads:sync_hint" };
+    }
     return { channels: ["system"], event: "materializer:hint" };
   }
 
