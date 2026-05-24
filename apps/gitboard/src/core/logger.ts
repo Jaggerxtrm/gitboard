@@ -3,6 +3,7 @@ import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { LogComponent, LogEntry, LogLevel } from "../types/log.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
+export type { EventType } from "./observability/event-types.ts";
 
 const LOG_RING_SIZE = 5000;
 const LOG_DEFAULT_LEVEL: LogLevel = "info";
@@ -66,11 +67,16 @@ function pushRing(entry: LogEntry): void {
 function shouldBroadcast(level: LogLevel): boolean { return LEVEL_ORDER[level] >= LEVEL_ORDER[logLevel]; }
 
 function queueDiskWrite(entry: LogEntry): void {
-  writeChain = writeChain.then(async () => {
-    await ensureDiskDir();
-    await cleanupRetentionIfNeeded();
-    await appendFile(currentLogPath(), `${JSON.stringify(entry)}\n`);
-  });
+  writeChain = writeChain
+    .then(async () => {
+      await ensureDiskDir();
+      await cleanupRetentionIfNeeded();
+      await appendFile(currentLogPath(), `${JSON.stringify(entry)}\n`);
+    })
+    .catch((error) => {
+      console.error("[gitboard] log write failed", error);
+      writeChain = Promise.resolve();
+    });
 }
 
 function currentLogPath(): string { return join(activeLogDir(), `${new Date().toISOString().slice(0, 10)}.jsonl`); }
