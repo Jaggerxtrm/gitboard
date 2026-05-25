@@ -65,7 +65,7 @@ export interface BeadsChips {
 }
 
 export interface BeadsSourceChip {
-  label: "dolt" | "jsonl" | "missing" | "error" | "unknown";
+  label: "dolt" | "sqlite" | "jsonl" | "missing" | "error" | "unknown";
   title: string;
   healthy: boolean;
 }

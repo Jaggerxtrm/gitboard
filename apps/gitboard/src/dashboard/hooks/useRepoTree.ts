@@ -48,6 +48,9 @@ function beadsSourceFromConnection(connection: BeadsConnectionStatus | null): Be
     const port = connection.port ? `:${connection.port}` : "";
     return { label: "dolt", title: connection.message ?? `Dolt connected${port}`, healthy: true };
   }
+  if (connection.status === "substrate_connected" || connection.source === "sqlite") {
+    return { label: "sqlite", title: connection.message ?? "xtrm.sqlite substrate connected", healthy: true };
+  }
   if (connection.source === "jsonl" || connection.degraded || connection.status === "jsonl_fallback" || connection.status === "no_dolt") {
     return { label: "jsonl", title: connection.message ?? connection.error ?? connection.note ?? "Dolt unavailable; reading JSONL backup. Data may be stale.", healthy: false };
   }
