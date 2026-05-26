@@ -1,22 +1,12 @@
 import { Database } from "bun:sqlite";
-import type { MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
+import type { MaterializedSpecialistJob, MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
 
 type ObservabilityCursor = {
   updated_at_ms: number;
   event_rowid: number;
 };
 
-type JobRow = {
-  job_id: string;
-  specialist: string | null;
-  status: string;
-  chain_id: string | null;
-  epic_id: string | null;
-  chain_kind: string | null;
-  worktree: string | null;
-  last_output: string | null;
-  updated_at_ms: number | null;
-};
+type JobRow = MaterializedSpecialistJob;
 
 type EventRow = {
   rowid: number;
@@ -47,12 +37,12 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
       return { rows: readAllJobs(db, repoSlug) } satisfies MaterializerSnapshot<JobRow>;
     },
     write(database, snapshot) {
-      const stmt = database.query("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, job_id) DO UPDATE SET specialist=excluded.specialist, status=excluded.status, chain_id=excluded.chain_id, epic_id=excluded.epic_id, chain_kind=excluded.chain_kind, worktree=excluded.worktree, last_output=excluded.last_output, created_at=excluded.created_at, updated_at=excluded.updated_at, updated_at_ms=excluded.updated_at_ms");
+      const stmt = database.query("INSERT INTO specialist_jobs (repo_slug, job_id, bead_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, job_id) DO UPDATE SET bead_id=excluded.bead_id, specialist=excluded.specialist, status=excluded.status, chain_id=excluded.chain_id, epic_id=excluded.epic_id, chain_kind=excluded.chain_kind, worktree=excluded.worktree, last_output=excluded.last_output, created_at=excluded.created_at, updated_at=excluded.updated_at, updated_at_ms=excluded.updated_at_ms");
       for (const row of snapshot.rows) {
         const timestamp = row.updated_at_ms ?? 0;
         const createdAt = new Date(timestamp).toISOString();
         const updatedAt = new Date(timestamp).toISOString();
-        stmt.run(repoSlug, row.job_id, row.specialist ?? null, row.status, row.chain_id ?? null, row.epic_id ?? null, row.chain_kind ?? null, row.worktree ?? null, row.last_output ?? null, createdAt, updatedAt, row.updated_at_ms ?? null);
+        stmt.run(repoSlug, row.job_id, row.bead_id ?? null, row.specialist, row.status, row.chain_id ?? null, row.epic_id ?? null, row.chain_kind ?? null, row.worktree ?? null, row.last_output ?? null, createdAt, updatedAt, row.updated_at_ms ?? null);
       }
     },
   };
@@ -68,13 +58,13 @@ function normalizeCursor(cursor: unknown): ObservabilityCursor {
 
 function readJobsSince(db: Database, repoSlug: string, updatedAtMs: number): JobRow[] {
   return db.query(
-    "SELECT job_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs WHERE updated_at_ms > ? ORDER BY updated_at_ms ASC, job_id ASC",
+    "SELECT repo_slug, job_id, bead_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs WHERE updated_at_ms > ? ORDER BY updated_at_ms ASC, job_id ASC",
   ).all(updatedAtMs) as JobRow[];
 }
 
 function readAllJobs(db: Database, repoSlug: string): JobRow[] {
   return db.query(
-    "SELECT job_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs ORDER BY updated_at_ms ASC, job_id ASC",
+    "SELECT repo_slug, job_id, bead_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs ORDER BY updated_at_ms ASC, job_id ASC",
   ).all() as JobRow[];
 }
 
@@ -82,7 +72,7 @@ function readJobsByIds(db: Database, repoSlug: string, jobIds: readonly string[]
   if (jobIds.length === 0) return [];
   const placeholders = jobIds.map(() => "?").join(", ");
   return db.query(
-    `SELECT job_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs WHERE job_id IN (${placeholders})`,
+    `SELECT repo_slug, job_id, bead_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs WHERE job_id IN (${placeholders})`,
   ).all(...jobIds) as JobRow[];
 }
 
