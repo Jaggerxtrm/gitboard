@@ -113,7 +113,7 @@ function logSchemaColumnsOnce(db: Database): void {
 function readSchema(db?: Database | null) {
   if (!db) return { columns: [], counts: { with_priority_nonzero: 0, with_type_nontask: 0, with_labels: 0, with_related: 0 } };
   const columns = (db.query("PRAGMA table_info(substrate_issues)").all() as Array<{ name: string }>).map((column) => column.name);
-  const counts = db.query("SELECT COUNT(*) AS with_priority_nonzero, SUM(CASE WHEN issue_type IS NOT NULL AND issue_type <> 'task' THEN 1 ELSE 0 END) AS with_type_nontask, SUM(CASE WHEN labels IS NOT NULL AND labels <> '[]' AND labels <> '' THEN 1 ELSE 0 END) AS with_labels, SUM(CASE WHEN related_ids IS NOT NULL AND related_ids <> '[]' AND related_ids <> '' THEN 1 ELSE 0 END) AS with_related FROM substrate_issues").get() as { with_priority_nonzero: number; with_type_nontask: number; with_labels: number; with_related: number } | undefined;
+  const counts = db.query("SELECT COALESCE(SUM(CASE WHEN priority IS NOT NULL AND priority <> 2 THEN 1 ELSE 0 END), 0) AS with_priority_nonzero, COALESCE(SUM(CASE WHEN issue_type IS NOT NULL AND issue_type <> 'task' THEN 1 ELSE 0 END), 0) AS with_type_nontask, COALESCE(SUM(CASE WHEN labels IS NOT NULL AND labels <> '[]' AND labels <> '' THEN 1 ELSE 0 END), 0) AS with_labels, COALESCE(SUM(CASE WHEN related_ids IS NOT NULL AND related_ids <> '[]' AND related_ids <> '' THEN 1 ELSE 0 END), 0) AS with_related FROM substrate_issues").get() as { with_priority_nonzero: number; with_type_nontask: number; with_labels: number; with_related: number } | undefined;
   return { columns, counts: counts ?? { with_priority_nonzero: 0, with_type_nontask: 0, with_labels: 0, with_related: 0 } };
 }
 

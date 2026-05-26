@@ -45,4 +45,5 @@ export interface MaterializerAdapter<TRow = MaterializedIssue, TDependency = Mat
   changesSince(cursor: MaterializerCursor): Promise<MaterializerDelta<TRow, TDependency>>;
   snapshot(): Promise<MaterializerSnapshot<TRow, TDependency>>;
   write(db: Database, snapshot: MaterializerSnapshot<TRow, TDependency>): void;
+  writeFull?(db: Database, snapshot: MaterializerSnapshot<TRow, TDependency>): void;
 }

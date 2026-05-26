@@ -65,9 +65,8 @@ export class Materializer {
     const snapshot = await adapter.snapshot();
     this.db.exec("BEGIN IMMEDIATE TRANSACTION");
     try {
-      const adapterWithFull = adapter as MaterializerAdapter & { writeFull?: MaterializerAdapter["write"] };
-      const writer = adapterWithFull.writeFull ?? adapterWithFull.write;
-      writer.call(adapterWithFull, this.db, snapshot);
+      const writer = adapter.writeFull ?? adapter.write;
+      writer.call(adapter, this.db, snapshot);
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");
