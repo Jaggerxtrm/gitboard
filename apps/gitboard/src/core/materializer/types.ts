@@ -8,7 +8,16 @@ export interface MaterializedIssue {
   title?: string | null;
   body?: string | null;
   state: string;
+  priority?: number | null;
+  issue_type?: string | null;
+  owner?: string | null;
+  labels?: string | null;
+  related_ids?: string | null;
+  parent_id?: string | null;
   deleted_at?: string | null;
+  closed_at?: string | null;
+  close_reason?: string | null;
+  notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -36,4 +45,5 @@ export interface MaterializerAdapter<TRow = MaterializedIssue, TDependency = Mat
   changesSince(cursor: MaterializerCursor): Promise<MaterializerDelta<TRow, TDependency>>;
   snapshot(): Promise<MaterializerSnapshot<TRow, TDependency>>;
   write(db: Database, snapshot: MaterializerSnapshot<TRow, TDependency>): void;
+  writeFull?(db: Database, snapshot: MaterializerSnapshot<TRow, TDependency>): void;
 }
