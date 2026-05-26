@@ -162,14 +162,16 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
               availableProjects: projects.map((item) => ({ id: item.id, name: item.name })).slice(0, 100),
               ms: Math.round(performance.now() - startedAt),
             });
-            setState({ ...INITIAL, loading: false, error: `No beads project for "${projectKey}".` });
+            setState((current) => current.project && !isProjectSwitch
+              ? { ...current, loading: false, error: null }
+              : { ...INITIAL, loading: false, error: `No beads project for "${projectKey}".` });
           }
           return;
         }
-        const [issues, memories, interactions] = await Promise.all([
-          beadsApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 }).catch(() => [] as BeadIssue[]),
-          beadsApi.listMemories(project.id).catch(() => [] as Memory[]),
-          beadsApi.listInteractions(project.id).catch(() => [] as Interaction[]),
+        const [issuesResult, memoriesResult, interactionsResult] = await Promise.all([
+          beadsApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 }).then((data) => data).catch(() => null as BeadIssue[] | null),
+          beadsApi.listMemories(project.id).then((data) => data).catch(() => null as Memory[] | null),
+          beadsApi.listInteractions(project.id).then((data) => data).catch(() => null as Interaction[] | null),
         ]);
         if (cancelled) return;
         logClientEvent("beads.feed.load_result", {
@@ -177,20 +179,20 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           projectName: project.name,
           projectKey,
           ms: Math.round(performance.now() - startedAt),
-          issues: issues.length,
-          memories: memories.length,
-          interactions: interactions.length,
-          newestIssue: newestIssueSummary(issues),
-          issueIds: issues.slice(0, 50).map((issue) => issue.id),
+          issues: (issuesResult ?? []).length,
+          memories: (memoriesResult ?? []).length,
+          interactions: (interactionsResult ?? []).length,
+          newestIssue: newestIssueSummary(issuesResult ?? []),
+          issueIds: (issuesResult ?? []).slice(0, 50).map((issue) => issue.id),
         });
         setState((current) => ({
           loading: false,
           error: null,
           project,
-          issues,
+          issues: issuesResult ?? (current.project?.id === project.id ? current.issues : []),
           closedIssues: current.project?.id === project.id ? current.closedIssues : [],
-          memories,
-          interactions,
+          memories: memoriesResult ?? (current.project?.id === project.id ? current.memories : []),
+          interactions: interactionsResult ?? (current.project?.id === project.id ? current.interactions : []),
         }));
 
         void beadsApi.listClosedIssues(project.id, 50)
