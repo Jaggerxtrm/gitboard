@@ -188,7 +188,7 @@ function createXtrmSpecialistsDao(db: import("bun:sqlite").Database, repoLister:
 
 function loadJobs(db: import("bun:sqlite").Database, whereSql: string, params: readonly string[]): SpecialistJob[] {
   const rows = db.query(`
-    SELECT j.repo_slug, j.job_id, COALESCE(l.issue_id, j.job_id) AS bead_id, j.chain_id, j.epic_id, j.chain_kind, j.status, j.updated_at, j.specialist, j.last_output,
+    SELECT j.repo_slug, j.job_id, COALESCE(l.issue_id, j.bead_id, j.job_id) AS bead_id, j.chain_id, j.epic_id, j.chain_kind, j.status, j.updated_at, j.specialist, j.last_output,
       COALESCE((SELECT COUNT(*) FROM specialist_job_events e WHERE e.repo_slug = j.repo_slug AND e.job_id = j.job_id), 0) AS event_count,
       NULL AS turns, NULL AS tools, NULL AS model
     FROM specialist_jobs AS j

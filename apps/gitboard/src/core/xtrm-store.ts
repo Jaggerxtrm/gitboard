@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS substrate_dependencies (
 CREATE TABLE IF NOT EXISTS specialist_jobs (
   repo_slug      TEXT NOT NULL,
   job_id         TEXT NOT NULL,
+  bead_id        TEXT,
   specialist     TEXT NOT NULL,
   status         TEXT NOT NULL,
   chain_id       TEXT,
@@ -107,6 +108,7 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_type ON substrate_issues(repo_slug, issue_type)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_dependencies_repo_issue ON substrate_dependencies(repo_slug, issue_id)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_jobs_repo_status ON specialist_jobs(repo_slug, status)",
+  "CREATE INDEX IF NOT EXISTS idx_specialist_jobs_repo_bead ON specialist_jobs(repo_slug, bead_id)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_job_events_repo_job ON specialist_job_events(repo_slug, job_id, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_job_link_repo_substrate ON substrate_job_link(repo_slug, substrate_type, substrate_id)",
   "CREATE INDEX IF NOT EXISTS idx_sources_kind_status ON sources(kind, status)",
@@ -115,7 +117,7 @@ const MIGRATIONS = [
 export function createXtrmDatabase(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec(SCHEMA);
-  ensureSpecialistJobsUpdatedAtMsColumn(db);
+  ensureSpecialistJobsColumns(db);
   ensureSubstrateIssuesColumns(db);
   for (const sql of MIGRATIONS) {
     db.exec(sql);
@@ -124,10 +126,19 @@ export function createXtrmDatabase(path: string): Database {
   return db;
 }
 
-function ensureSpecialistJobsUpdatedAtMsColumn(db: Database): void {
-  const row = db.query("PRAGMA table_info(specialist_jobs)").all() as Array<{ name: string }>;
-  if (row.some((column) => column.name === "updated_at_ms")) return;
-  db.exec("ALTER TABLE specialist_jobs ADD COLUMN updated_at_ms INTEGER");
+function ensureSpecialistJobsColumns(db: Database): void {
+  const columns = new Set((db.query("PRAGMA table_info(specialist_jobs)").all() as Array<{ name: string }>).map((column) => column.name));
+  for (const column of [
+    ["bead_id", "TEXT"],
+    ["updated_at_ms", "INTEGER"],
+  ] as const) {
+    if (columns.has(column[0])) {
+      console.log(`xtrm-store: ALTER specialist_jobs ADD COLUMN ${column[0]} ${column[1]} [already-present]`);
+      continue;
+    }
+    console.log(`xtrm-store: ALTER specialist_jobs ADD COLUMN ${column[0]} ${column[1]} [added]`);
+    db.exec(`ALTER TABLE specialist_jobs ADD COLUMN ${column[0]} ${column[1]}`);
+  }
 }
 
 function ensureSubstrateIssuesColumns(db: Database): void {

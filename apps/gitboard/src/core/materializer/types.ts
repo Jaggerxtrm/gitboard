@@ -22,6 +22,22 @@ export interface MaterializedIssue {
   updated_at?: string | null;
 }
 
+export interface MaterializedSpecialistJob {
+  repo_slug: string;
+  job_id: string;
+  bead_id?: string | null;
+  specialist: string;
+  status: string;
+  chain_id?: string | null;
+  epic_id?: string | null;
+  chain_kind?: string | null;
+  worktree?: string | null;
+  last_output?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  updated_at_ms?: number | null;
+}
+
 export interface MaterializedDependency {
   repo_slug: string;
   issue_id: string;
