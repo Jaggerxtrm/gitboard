@@ -55,6 +55,23 @@ export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, Mate
     this.deleteDependencies(db, snapshot.rows);
     this.writeIssues(db, snapshot.rows);
     this.writeDependencies(db, snapshot.dependencies ?? []);
+    // NOTE: tombstoneMissing is intentionally NOT called here. changesSince()
+    // already emits tombstone rows via diff.tombstones (with state='deleted')
+    // for issues that disappeared. Running tombstoneMissing on a delta-shaped
+    // snapshot would tombstone every active issue not in the small set of
+    // changed rows — exactly the cross-project wipe bug fixed in forge-eorh.70.
+    // For full resync (no diff context), use writeFull() instead.
+  }
+
+  /**
+   * Resync write path: writes a FULL snapshot AND tombstones any active
+   * substrate row for this project that is missing from the snapshot.
+   * Called only by Materializer.resync(), never by runOnce.
+   */
+  writeFull(db: Database, snapshot: MaterializerSnapshot<MaterializedIssue, MaterializedDependency>): void {
+    this.deleteDependencies(db, snapshot.rows);
+    this.writeIssues(db, snapshot.rows);
+    this.writeDependencies(db, snapshot.dependencies ?? []);
     this.tombstoneMissing(db, snapshot.rows);
   }
 
