@@ -19,7 +19,6 @@ export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
   router.get("/projects/:projectId/interactions", (c) => c.json({ interactions: readInteractions(xtrmDb, c.req.param("projectId"), c.req.query("issue_id") ?? undefined) }));
   router.get("/projects/:projectId/stats", (c) => c.json({ stats: readStats(xtrmDb, c.req.param("projectId")) }));
   router.get("/projects/:projectId/connection", (c) => c.json(readConnection(xtrmDb, c.req.param("projectId"))));
-  router.get("/schema", (c) => c.json(readSchema(xtrmDb)));
 
   return router;
 }
