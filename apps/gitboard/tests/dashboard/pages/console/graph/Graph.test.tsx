@@ -64,4 +64,27 @@ describe("Graph (React Flow viewport)", () => {
       expect(panes.length).toBeGreaterThanOrEqual(1);
     });
   });
+
+  it("shows degraded source banner while preserving non-empty graph", async () => {
+    useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: "gitboard-degraded" } as never });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...fixture,
+        freshness: "fresh",
+        source_health: {
+          source: "graph",
+          status: "degraded",
+          checked_at: "2026-01-01T00:00:00.000Z",
+          message: "Graph source materialization failed.",
+        },
+      }),
+    });
+
+    const { container, getByRole } = render(<Graph />);
+    await waitFor(() => {
+      expect(getByRole("status").textContent).toBe("Graph source materialization failed.");
+      expect(container.querySelectorAll(".g-cluster").length).toBeGreaterThanOrEqual(1);
+    });
+  });
 });
