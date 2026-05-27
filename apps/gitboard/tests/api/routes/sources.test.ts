@@ -49,7 +49,7 @@ describe("sources routes", () => {
     db.close();
   });
 
-  it("rejects unknown kind and spoofed requests", async () => {
+  it("rejects unknown origin and spoofed requests", async () => {
     const db = createXtrmDatabase(dbPath);
     const app = createSourcesRouter(db);
 
@@ -59,6 +59,20 @@ describe("sources routes", () => {
       body: JSON.stringify({ path: "/repo", kind: "unknown" }),
     }));
     expect(badKind.status).toBe(400);
+
+    const missingToken = await app.fetch(new Request("http://localhost/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost" },
+      body: JSON.stringify({ path: "/repo", kind: "beads" }),
+    }));
+    expect(missingToken.status).toBe(403);
+
+    const wrongToken = await app.fetch(new Request("http://localhost/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-gitboard-sources-admin-token": "wrong" },
+      body: JSON.stringify({ path: "/repo", kind: "beads" }),
+    }));
+    expect(wrongToken.status).toBe(403);
 
     const spoofed = await app.fetch(new Request("http://example.com/pin", {
       method: "POST",
