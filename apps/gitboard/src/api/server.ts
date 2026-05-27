@@ -14,9 +14,11 @@ import { createSubstrateRouter } from "./routes/substrate.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
+import { createGraphDao } from "../core/graph-dao.ts";
 import { createShellRouter } from "./routes/shell.ts";
+import { createSourcesRouter } from "./routes/sources.ts";
 import { createTerminalRouter } from "./routes/terminal.ts";
-import { ChannelRegistry } from "./ws/channels.ts";
+import { ChannelRegistry, type ChannelName } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { Materializer } from "../core/materializer/index.ts";
 import { createObservabilityAdapter } from "../core/materializer/observability-adapter.ts";
@@ -26,6 +28,7 @@ import { createBeadsParityHarness } from "./routes/beads-parity.ts";
 import { TriggerWatcher } from "../server/beads/trigger-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { listRepos } from "../server/observability/registry.ts";
+import { UnifiedScanner } from "../core/unified-scanner.ts";
 import { getShellProviderStatus, isAllowedShellWebSocketOrigin, isShellWebSocketPath, isVerifiedShellAdminRequest, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
 import { createTerminalProviderRegistry } from "./terminal/provider-registry.ts";
 import { TerminalBridge } from "./terminal/bridge.ts";
@@ -39,6 +42,7 @@ let currentRegistry: ChannelRegistry | null = null;
 let currentWatcher: TriggerWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
 let currentMaterializer: Materializer | null = null;
+let currentUnifiedScanner: UnifiedScanner | null = null;
 let currentBeadsParityHarness: ReturnType<typeof createBeadsParityHarness> | null = null;
 let currentObservabilityParityHarness: ReturnType<typeof createObservabilityParityHarness> | null = null;
 let currentEpochBumpUnsubscribe: (() => void) | null = null;
@@ -71,6 +75,9 @@ export function createApp(db: Database, xtrmDb?: Database): {
   const materializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
   currentMaterializer = materializer;
   const obsRepos = listRepos();
+  currentUnifiedScanner?.stop();
+  currentUnifiedScanner = xtrmDb ? new UnifiedScanner(xtrmDb, { parityEnabled: process.env.GITBOARD_ENABLE_PARITY === "1" }) : null;
+  currentUnifiedScanner?.start();
   if (materializer && xtrmDb) {
     for (const repo of obsRepos) {
       const sourceKey = `obs:${repo.repoSlug}`;
@@ -80,7 +87,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
     currentEpochBumpUnsubscribe?.();
     currentEpochBumpUnsubscribe = onBump((repoSlug) => {
       const sourceKey = `obs:${repoSlug}`;
-      for (const channel of ["specialists:activity", `specialists:repo:${repoSlug}`]) {
+      for (const channel of ["specialists:activity", `specialists:repo:${repoSlug}`] as ChannelName[]) {
         registry.publish(channel, "specialists:sync_hint", { source_key: sourceKey, kind: "epoch_bump" }, String(Date.now()));
       }
     });
@@ -140,7 +147,14 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/beads", createBeadsRouter(xtrmDb ?? null));
   app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
   app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
-  app.route("/api/console/graph", createGraphRouter());
+  app.route("/api/console/graph", createGraphRouter(xtrmDb ? createGraphDao({
+    xtrmDb,
+    triggerMaterialization: (projectId) => {
+      if (!projectId) return;
+      materializer?.trigger(`beads:${projectId}`);
+    },
+  }) : undefined));
+  app.route("/api/sources", createSourcesRouter(xtrmDb ?? null, currentUnifiedScanner));
   app.route("/api/console/shell", createShellRouter());
   app.route("/api/console/terminal", createTerminalRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
@@ -261,6 +275,7 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
     currentEpochBumpUnsubscribe?.();
     currentObservabilityParityHarness?.stop();
     currentBeadsParityHarness?.stop();
+    currentUnifiedScanner?.stop();
   });
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);

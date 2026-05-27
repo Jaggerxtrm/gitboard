@@ -98,6 +98,12 @@ export function Graph() {
         </span>
       </header>
 
+      {data?.source_health?.status === "degraded" ? (
+        <div className="g-source-banner" role="status">
+          {data.source_health.message ?? "Graph source degraded"}
+        </div>
+      ) : null}
+
       {partition.wip.length > 0 ? <NowStrip nodes={partition.wip} specialists={specialistByBead} /> : null}
 
       <div className="g-clusters">
