@@ -1,7 +1,6 @@
 import type { SourceHealthStatus } from "./source-health.ts";
 
-// Beadboard domain types. Ported from apps/beadboard/src/types/beads.ts
-// (forge-5w9.2) — kept as superset to support BeadIssueDetail and project source health.
+// Beads domain types — superset supporting BeadIssueDetail and project source health.
 
 export type Status = "open" | "in_progress" | "blocked" | "in_review" | "closed" | (string & {});
 export type Priority = 0 | 1 | 2 | 3 | 4 | (number & {});

@@ -219,7 +219,7 @@ function dependencyKey(dependency: MaterializedDependency): string {
 function createLazyDoltClient(port: number, database: string): { getIssues(options: { limit: number }): Promise<BeadIssue[]> } {
   return {
     async getIssues(options: { limit: number }): Promise<BeadIssue[]> {
-      const { DoltClient } = await import("../../../../beadboard/src/core/dolt-client.ts");
+      const { DoltClient } = await import("../dolt-client.ts");
       const client = new DoltClient({ host: "127.0.0.1", port, database });
       return client.getIssues(options);
     },

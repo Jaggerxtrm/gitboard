@@ -3158,9 +3158,8 @@ body {
 }
 
 /* ============================================================
- * forge-5w9.7: Beadboard styles ported wholesale (kanban + row + overlay).
- * Sourced from apps/beadboard/src/dashboard/styles/globals.css (no namespace —
- * relies on tokens already shared via packages/ui/tokens.css).
+ * Beads UI: kanban + row + overlay styles (no namespace — relies
+ * on tokens shared via packages/ui/tokens.css).
  * ============================================================ */
 
 
