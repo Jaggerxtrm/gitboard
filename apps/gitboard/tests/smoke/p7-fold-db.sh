@@ -28,7 +28,7 @@ fi
 TMP_DIR="$(mktemp -d)"
 cp "${FIXTURE_PATH}" "${TMP_DIR}/gitboard.sqlite"
 
-TMP_DIR="${TMP_DIR}" bun --cwd "${ROOT_DIR}/apps/gitboard" --eval '
+TMP_DIR="${TMP_DIR}" bun --cwd "${ROOT_DIR}" --eval '
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";

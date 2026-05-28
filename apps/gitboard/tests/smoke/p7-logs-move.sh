@@ -18,7 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-LOG_DIR="${LOG_DIR}" GITBOARD_DATA_DIR="${TMP_DIR}/data" SKIP_GITHUB_POLLER=1 bun run --cwd "${ROOT_DIR}/apps/gitboard" src/index.ts >/dev/null 2>&1 &
+LOG_DIR="${LOG_DIR}" GITBOARD_DATA_DIR="${TMP_DIR}/data" SKIP_GITHUB_POLLER=1 bun run --cwd "${ROOT_DIR}" src/index.ts >/dev/null 2>&1 &
 APP_PID="$!"
 
 for _ in {1..80}; do
