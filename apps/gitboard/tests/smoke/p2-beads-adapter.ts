@@ -18,7 +18,9 @@ const registry = new ChannelRegistry();
 const published: Array<{ event: string; payload: unknown }> = [];
 const originalPublish = registry.publish.bind(registry);
 registry.publish = ((channel, event, payload, version) => {
-  if (channel.startsWith("substrate:") && event === "substrate:sync_hint") published.push({ event, payload });
+  // Materializer publishes to BOTH substrate:changes and substrate:project:<id> per run;
+  // count only the global channel to keep a 1:1 ratio between materializer cycles and counted hints.
+  if (channel === "substrate:changes" && event === "substrate:sync_hint") published.push({ event, payload });
   return originalPublish(channel, event, payload, version);
 }) as typeof registry.publish;
 
