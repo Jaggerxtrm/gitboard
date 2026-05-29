@@ -221,7 +221,13 @@ function createLazyDoltClient(port: number, database: string): { getIssues(optio
     async getIssues(options: { limit: number }): Promise<BeadIssue[]> {
       const { DoltClient } = await import("../dolt-client.ts");
       const client = new DoltClient({ host: "127.0.0.1", port, database });
-      return client.getIssues(options);
+      try {
+        return await client.getIssues(options);
+      } finally {
+        // Each call leaks a mysql2 pool otherwise — 15 projects × ~30s materializer cycle
+        // accumulated 1000+ connections in 53 min, exhausting dolt's max_connections.
+        await client.disconnect().catch(() => { /* swallow on shutdown race */ });
+      }
     },
   };
 }
