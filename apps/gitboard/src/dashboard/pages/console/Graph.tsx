@@ -29,6 +29,7 @@ import { buildClusterFlow } from "./graph/buildFlowGraph.ts";
 import { BeadNode } from "./graph/nodes/BeadNode.tsx";
 import { CustomEdge } from "./graph/edges/CustomEdge.tsx";
 import { EdgeMarkers } from "./graph/edges/EdgeMarkers.tsx";
+import { TYPE_CONFIG } from "../../lib/type-palette.ts";
 import type { GraphNode, GraphSpecialist } from "../../../types/graph.ts";
 
 const NODE_TYPES = { beadNode: BeadNode };
@@ -261,18 +262,17 @@ function OrphanStrip({ nodes }: { nodes: GraphNode[] }) {
   );
 }
 
-// Mirrors TYPE_CONFIG from IssueFeed.tsx (palette parity across graph + feed).
 const TYPE_COLOR: Record<string, string> = {
-  bug: "#ff4d5e",
-  feature: "#4169e1",
-  task: "var(--text-muted)",
-  epic: "rgba(163,113,247,0.95)",
-  chore: "var(--text-muted)",
+  bug: TYPE_CONFIG.bug.color,
+  feature: TYPE_CONFIG.feature.color,
+  task: TYPE_CONFIG.task.color,
+  epic: TYPE_CONFIG.epic.color,
+  chore: TYPE_CONFIG.chore.color,
   decision: "var(--text-muted)",
   molecule: "var(--text-muted)",
 };
 const TYPE_LABEL: Record<string, string> = {
-  bug: "bug", feature: "feature", task: "task", epic: "epic", chore: "chore", decision: "decision", molecule: "mol",
+  bug: TYPE_CONFIG.bug.label.toLowerCase(), feature: TYPE_CONFIG.feature.label.toLowerCase(), task: TYPE_CONFIG.task.label.toLowerCase(), epic: TYPE_CONFIG.epic.label.toLowerCase(), chore: TYPE_CONFIG.chore.label.toLowerCase(), decision: "decision", molecule: "mol",
 };
 const STATUS_TEXT: Record<string, string> = {
   open: "open", in_progress: "in progress", blocked: "blocked", closed: "closed", deferred: "deferred",

@@ -4719,14 +4719,10 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
    Mirrors IssueFeed + graph chip register. */
 .console-specialists-card {
   width: 100%;
-  display: grid;
-  grid-template-rows: auto auto;
-  align-content: center;
-  row-gap: 1px;
-  padding: 6px 12px 6px 9px;
+  display: block;
+  padding: 0;
   background: transparent;
   border: 0;
-  border-left: 3px solid var(--rail-color, var(--text-muted));
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
   text-align: left;
@@ -4742,47 +4738,29 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
   50%      { opacity: 0.7; }
 }
 
-.console-specialists-card-identity {
-  display: inline-flex;
-  align-items: baseline;
+.console-specialists-chain-row {
+  display: grid;
+  grid-template-rows: auto auto;
+  row-gap: 1px;
+  padding: 6px 12px 6px 9px;
+}
+.console-specialists-chain-row-identity,
+.console-specialists-chain-row-meta {
+  display: flex;
+  align-items: center;
   gap: 4px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   font-family: var(--font-ui);
-  font-size: 11px;
 }
-.console-specialists-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  font-family: var(--font-ui);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.console-specialists-card-id { color: var(--text-primary); font-family: var(--font-mono); font-size: 11px; font-weight: 500; flex: 0 0 auto; }
-.console-specialists-card-sep { color: rgba(255, 255, 255, 0.12); font-family: var(--font-mono); font-size: 11px; flex: 0 0 auto; }
-[data-theme="light"] .console-specialists-card-sep { color: rgba(15, 23, 42, 0.45); }
-.console-specialists-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-style: italic; font-weight: 500; }
-.console-specialists-card-status { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; text-transform: lowercase; letter-spacing: 0.02em; flex: 0 0 auto; }
-.console-specialists-card-count { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; flex: 0 0 auto; }
-
-/* Legacy alias retained for any other consumers. */
-.console-specialists-role-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 0;
-  color: var(--text-secondary);
-  border: 0;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  flex: 0 0 auto;
-}
-/* Status-coloured role chip in the list — matches JobBlock chip register. */
-.console-specialists-card-role-chip {
+.console-specialists-chain-row-identity { font-size: 11px; }
+.console-specialists-chain-row-meta { font-size: 10px; color: var(--text-muted); gap: 5px; flex-wrap: wrap; row-gap: 3px; }
+.console-specialists-chain-row-id { color: var(--text-primary); font-family: var(--font-mono); font-size: 11px; font-weight: 500; flex: 0 0 auto; }
+.console-specialists-chain-row-sep { color: rgba(255, 255, 255, 0.12); font-family: var(--font-mono); font-size: 11px; flex: 0 0 auto; }
+[data-theme="light"] .console-specialists-chain-row-sep { color: rgba(15, 23, 42, 0.45); }
+.console-specialists-chain-row-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-style: italic; font-weight: 500; }
+.console-specialists-chain-row-chip {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -4793,9 +4771,9 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
   letter-spacing: 0.02em;
   flex: 0 0 auto;
 }
-.console-specialists-card-meta { flex-wrap: wrap; row-gap: 3px; }
-.console-specialists-card-elapsed { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; flex: 0 0 auto; }
-.console-specialists-card-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-family: var(--font-ui); font-style: italic; flex: 1 1 200px; }
+.console-specialists-chain-row-chip-dot { width: 5px; height: 5px; border-radius: 999px; background: currentColor; flex: 0 0 auto; }
+.console-specialists-chain-row-job { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; flex: 0 0 auto; }
+.console-specialists-card-list { gap: 0; }
 .console-specialists-detail { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: auto; padding: 8px 10px; }
 .console-specialists-detail-empty-state { align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); }
 .console-specialists-empty-mark { color: var(--text-muted); }

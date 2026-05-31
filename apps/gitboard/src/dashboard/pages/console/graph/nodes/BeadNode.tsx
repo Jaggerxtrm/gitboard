@@ -5,6 +5,7 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { GraphNode, GraphNodeType, GraphSpecialist } from "../../../../../types/graph.ts";
+import { TYPE_CONFIG } from "../../../../lib/type-palette.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "../agent-roles.ts";
 
 export interface BeadNodeData extends Record<string, unknown> {
@@ -23,23 +24,22 @@ const HANDLE_STYLE = {
   background: "transparent",
 };
 
-// Mirrors TYPE_CONFIG from IssueFeed.tsx so graph + feed share the same palette.
 const TYPE_COLOR: Record<GraphNodeType, string> = {
-  bug: "#ff4d5e",
-  feature: "#4169e1",
-  task: "var(--text-muted)",
-  epic: "rgba(163,113,247,0.95)",
-  chore: "var(--text-muted)",
+  bug: TYPE_CONFIG.bug.color,
+  feature: TYPE_CONFIG.feature.color,
+  task: TYPE_CONFIG.task.color,
+  epic: TYPE_CONFIG.epic.color,
+  chore: TYPE_CONFIG.chore.color,
   decision: "var(--text-muted)",
   molecule: "var(--text-muted)",
 };
 
 const TYPE_LABEL: Record<GraphNodeType, string> = {
-  bug: "bug",
-  feature: "feature",
-  task: "task",
-  epic: "epic",
-  chore: "chore",
+  bug: TYPE_CONFIG.bug.label.toLowerCase(),
+  feature: TYPE_CONFIG.feature.label.toLowerCase(),
+  task: TYPE_CONFIG.task.label.toLowerCase(),
+  epic: TYPE_CONFIG.epic.label.toLowerCase(),
+  chore: TYPE_CONFIG.chore.label.toLowerCase(),
   decision: "decision",
   molecule: "mol",
 };

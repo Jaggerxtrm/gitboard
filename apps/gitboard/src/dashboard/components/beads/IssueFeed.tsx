@@ -4,9 +4,10 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRightIcon, ChevronDownIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
+import { ChevronRightIcon, ChevronDownIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { substrateApi as api } from "../../lib/beads.ts";
+import { TYPE_CONFIG } from "../../lib/type-palette.ts";
 import { SpecialistOwnerBadge } from "./SpecialistOwnerBadge.tsx";
 import { BeadHeader } from "../specialists/BeadHeader.tsx";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
@@ -40,14 +41,6 @@ const STATUS_LABELS: Record<string, string> = {
   blocked: "Blocked",
   deferred: "Deferred",
   closed: "Closed",
-};
-
-const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon; color: string }> = {
-  bug: { label: "Bug", icon: IssueOpenedIcon, color: "#ff4d5e" },
-  feature: { label: "Feature", icon: NorthStarIcon, color: "#4169e1" },
-  task: { label: "Task", icon: ProjectIcon, color: "var(--text-muted)" },
-  epic: { label: "Epic", icon: MilestoneIcon, color: "rgba(163,113,247,0.95)" },
-  chore: { label: "Chore", icon: ToolsIcon, color: "var(--text-muted)" },
 };
 
 export type FeedItem =

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertIcon, DotFillIcon } from "@primer/octicons-react";
+import { emit, makeLogEntry } from "../../../core/logger.ts";
 import { useChains, type ChainStatus, type ChainSummary } from "../../hooks/useChains.ts";
 import { ChainCard } from "./specialists/ChainCard.tsx";
 import { ChainDetailPane } from "./specialists/ChainDetailPane.tsx";
 import { FilterChips } from "./specialists/FilterChips.tsx";
+
+const PALETTE_VERSION = "type-palette@1";
 
 export function Specialists() {
   const { chains, loading, error } = useChains();
@@ -11,6 +14,11 @@ export function Specialists() {
   const [filters, setFilters] = useState<Set<ChainStatus | "all">>(new Set(["all"]));
 
   const visibleChains = useMemo(() => chains.filter((chain) => matchesFilters(chain, filters)), [chains, filters]);
+  const typesByCount = useMemo(() => countByStatus(visibleChains), [visibleChains]);
+
+  useEffect(() => {
+    emit(makeLogEntry("cockpit", "list.rendered", "info", undefined, { rowCount: visibleChains.length, paletteVersion: PALETTE_VERSION, typesByCount }));
+  }, [typesByCount, visibleChains.length]);
 
   useEffect(() => {
     if (visibleChains.length === 0) {
@@ -55,4 +63,10 @@ function toggleFilter(current: Set<ChainStatus | "all">, status: ChainStatus | "
   if (next.has(status)) next.delete(status);
   else next.add(status);
   return next.size === 0 ? new Set(["all"]) : next;
+}
+
+function countByStatus(chains: ChainSummary[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const chain of chains) counts[chain.status] = (counts[chain.status] ?? 0) + 1;
+  return counts;
 }
