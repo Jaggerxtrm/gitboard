@@ -1,36 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, DotFillIcon } from "@primer/octicons-react";
 import { emit, makeLogEntry } from "../../../core/logger.ts";
-import { useChains, type ChainStatus, type ChainSummary } from "../../hooks/useChains.ts";
+import { useChains, type ChainStatus } from "../../hooks/useChains.ts";
+import { BeadActivityPane } from "../../components/specialists/BeadActivityPane.tsx";
 import { ChainCard } from "./specialists/ChainCard.tsx";
-import { ChainDetailPane } from "./specialists/ChainDetailPane.tsx";
 import { FilterChips } from "./specialists/FilterChips.tsx";
-
-const PALETTE_VERSION = "type-palette@1";
+import { buildBeadActivitySwappedTelemetry, buildChainSelectedTelemetry, buildFirstPaintTelemetry, buildListRenderedTelemetry, deriveSelection, toggleFilter, type CockpitFilters } from "./specialists/cockpitSelection.ts";
 
 export function Specialists() {
   const { chains, loading, error } = useChains();
   const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Set<ChainStatus | "all">>(new Set(["all"]));
+  const [filters, setFilters] = useState<CockpitFilters>(new Set(["all"]));
+  const firstPaintLogged = useRef(false);
+  const lastSelectedChainId = useRef<string | null>(null);
 
-  const visibleChains = useMemo(() => chains.filter((chain) => matchesFilters(chain, filters)), [chains, filters]);
-  const typesByCount = useMemo(() => countByStatus(visibleChains), [visibleChains]);
-
-  useEffect(() => {
-    emit(makeLogEntry("cockpit", "list.rendered", "info", undefined, { rowCount: visibleChains.length, paletteVersion: PALETTE_VERSION, typesByCount }));
-  }, [typesByCount, visibleChains.length]);
+  const selection = useMemo(() => deriveSelection(chains, filters, selectedChainId), [chains, filters, selectedChainId]);
+  const typesByCount = useMemo(() => countByStatus(selection.visibleChains), [selection.visibleChains]);
 
   useEffect(() => {
-    if (visibleChains.length === 0) {
-      setSelectedChainId(null);
-      return;
+    emit(makeLogEntry("cockpit", "list.rendered", "info", undefined, buildListRenderedTelemetry(selection.visibleChains, typesByCount)));
+    if (!firstPaintLogged.current && !loading && !error) {
+      firstPaintLogged.current = true;
+      emit(makeLogEntry("cockpit", "list.first_paint", "info", undefined, buildFirstPaintTelemetry(selection.visibleChains)));
     }
-    if (!selectedChainId || !visibleChains.some((chain) => chain.chainId === selectedChainId)) {
-      setSelectedChainId(visibleChains[0]!.chainId);
-    }
-  }, [selectedChainId, visibleChains]);
+  }, [error, loading, selection.visibleChains, typesByCount]);
 
-  const selectedChain = visibleChains.find((chain) => chain.chainId === selectedChainId) ?? null;
+  useEffect(() => {
+    if (selection.selectedChainId === selectedChainId) return;
+    setSelectedChainId(selection.selectedChainId);
+  }, [selectedChainId, selection.selectedChainId]);
+
+  useEffect(() => {
+    if (!selection.selectedChainId || lastSelectedChainId.current === selection.selectedChainId) return;
+    lastSelectedChainId.current = selection.selectedChainId;
+    emit(makeLogEntry("cockpit", "chain.selected", "info", undefined, buildChainSelectedTelemetry(selection.selectedChainId)));
+  }, [selection.selectedChainId]);
+
+  useEffect(() => {
+    if (!selection.selectedChain) return;
+    emit(makeLogEntry("cockpit", "bead_activity.swapped", "info", undefined, buildBeadActivitySwappedTelemetry(selection.selectedChain)));
+  }, [selection.selectedChain]);
+
   const empty = !loading && !error && chains.length === 0;
 
   return (
@@ -42,30 +52,18 @@ export function Specialists() {
           <div className="console-specialists-empty-state-message"><DotFillIcon size={10} /><span>No specialist chains for this project yet</span></div>
         ) : (
           <div className="console-specialists-card-list">
-            {visibleChains.map((chain) => <ChainCard key={chain.chainId} chain={chain} selected={selectedChain?.chainId === chain.chainId} onSelect={() => setSelectedChainId(chain.chainId)} />)}
+            {selection.visibleChains.map((chain) => <ChainCard key={chain.chainId} chain={chain} selected={selection.selectedChain?.chainId === chain.chainId} onSelect={() => setSelectedChainId(chain.chainId)} />)}
           </div>
         )}
       </div>
-      <div className="console-specialists-detail-pane"><ChainDetailPane chain={selectedChain} /></div>
+      <div className="console-specialists-detail-pane">
+        {selection.selectedChain ? <BeadActivityPane beadId={selection.selectedChain.rootBeadId} /> : <div className="console-specialists-detail console-specialists-detail-empty-state"><div className="console-specialists-empty-mark"><DotFillIcon size={10} /></div><div>Select a chain to see details</div></div>}
+      </div>
     </section>
   );
 }
 
-function matchesFilters(chain: ChainSummary, filters: Set<ChainStatus | "all">): boolean {
-  if (filters.has("all")) return true;
-  return filters.has(chain.status);
-}
-
-function toggleFilter(current: Set<ChainStatus | "all">, status: ChainStatus | "all"): Set<ChainStatus | "all"> {
-  if (status === "all") return new Set(["all"]);
-  const next = new Set(current);
-  next.delete("all");
-  if (next.has(status)) next.delete(status);
-  else next.add(status);
-  return next.size === 0 ? new Set(["all"]) : next;
-}
-
-function countByStatus(chains: ChainSummary[]): Record<string, number> {
+function countByStatus(chains: Array<{ status: ChainStatus }>): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const chain of chains) counts[chain.status] = (counts[chain.status] ?? 0) + 1;
   return counts;

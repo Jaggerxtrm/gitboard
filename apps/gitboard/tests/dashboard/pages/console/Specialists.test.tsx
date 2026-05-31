@@ -28,7 +28,7 @@ describe("Specialists", () => {
     render(<BeadSideDrawer />);
 
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect(screen.getByText("Beta")).toBeTruthy();
+    expect(screen.getByText("Beta", { selector: ".bead-side-drawer-title" })).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(useBeadSideDrawer.getState().beadId).toBeNull());
 
@@ -43,5 +43,4 @@ describe("Specialists", () => {
     expect(useShellStore.getState().selection.tab).toBe("feed");
     document.body.removeChild(target);
   });
-
 });
