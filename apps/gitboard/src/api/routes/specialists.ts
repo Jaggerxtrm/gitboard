@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { emit, makeLogEntry } from "../../core/logger.ts";
+import { isVerifiedShellAdminRequest } from "../../core/shell-provider-policy.ts";
 import { createAttachPool } from "../../server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../server/observability/dao.ts";
 import { get as getEpoch } from "../../server/observability/epoch.ts";
@@ -105,6 +106,22 @@ export function createSpecialistsRouter(
     jobsByBeadCache = refreshed;
     logJobsByBeadResponse(beadId, refreshed.value.jobs, "fresh", startedAt);
     return c.json({ ...refreshed.value, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+  });
+
+  router.get("/jobs/:job_id/result", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
+    const jobId = c.req.param("job_id");
+    const db = xtrmDatabase;
+    if (!db) return c.json({ error: "result unavailable" }, 404);
+    const row = db.query(`
+      SELECT event_type, payload
+      FROM specialist_job_events
+      WHERE job_id = ? AND event_type IN ('result', 'terminal_output')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(jobId) as { event_type?: string; payload?: string } | undefined;
+    if (!row) return c.json({ error: "result not found" }, 404);
+    return c.json({ text: row.payload ?? "", content_type: "text/markdown" });
   });
 
   router.get("/jobs/in-flight", async (c) => {
@@ -351,6 +368,10 @@ async function warmDefaultBundle(repos: SpecialistRepoList, key: string): Promis
 
 function emptySpecialistsDao(): SpecialistsDao {
   return { jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] };
+}
+
+export function isSpecialistResultRequestAllowed(headers: Headers): boolean {
+  return isVerifiedShellAdminRequest(headers);
 }
 
 function isSpecialistsRouterOptions(value: unknown): value is SpecialistsRouterOptions {

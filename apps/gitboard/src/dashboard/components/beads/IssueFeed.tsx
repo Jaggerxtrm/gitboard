@@ -8,6 +8,7 @@ import { ChevronRightIcon, ChevronDownIcon, IssueOpenedIcon, MilestoneIcon, Nort
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { substrateApi as api } from "../../lib/beads.ts";
 import { SpecialistOwnerBadge } from "./SpecialistOwnerBadge.tsx";
+import { BeadHeader } from "../specialists/BeadHeader.tsx";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
 
@@ -243,15 +244,7 @@ export function IssueDossier({ id, detail, issue, loading, projectId, issueById 
   return (
     <section id={id} className="bead-expanded-body">
       <div className="bead-expanded-stack">
-        <div className="bead-dossier-meta-strip">
-          <span><b>Status</b><strong>{STATUS_LABELS[getDisplayStatus(issue)] ?? getDisplayStatus(issue)}</strong></span>
-          <span><b>Priority</b><strong>P{issue.priority}</strong></span>
-          <span><b>Type</b><strong>{TYPE_CONFIG[String(issue.issue_type)]?.label ?? issue.issue_type}</strong></span>
-          {issue.owner && <span><b>Owner</b><strong>{issue.owner}</strong></span>}
-          <span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
-          <span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
-          {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
-        </div>
+        <BeadHeader issue={issue} detail={detail} />
         <DossierSection title="Description"><SafeMarkdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection>
         {specialistHistory.count > 0 && (
           <DossierSection title="SPECIALIST ACTIVITY">
