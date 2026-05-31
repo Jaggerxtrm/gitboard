@@ -37,7 +37,7 @@ export function createTerminalProviderRegistry(env: NodeJS.ProcessEnv = process.
   const createProviders = (context: { isVerifiedAdmin?: boolean } = {}): TerminalProvider[] => {
     const shellStatus = getShellProviderStatus(env, { isVerifiedAdmin: context.isVerifiedAdmin === true });
     return [
-      createSpecialistFeedTerminalProvider(env),
+      createSpecialistFeedTerminalProvider(env, context),
       createNodePtyTerminalProvider(shellStatus, repoRoot, env),
       { kind: "tmux", enabled: false, reason: "provider disabled", openSession: async () => { throw new Error("provider disabled"); } },
       { kind: "ssh", enabled: false, reason: "provider disabled", openSession: async () => { throw new Error("provider disabled"); } },
@@ -50,13 +50,15 @@ export function createTerminalProviderRegistry(env: NodeJS.ProcessEnv = process.
   };
 }
 
-function createSpecialistFeedTerminalProvider(env: NodeJS.ProcessEnv): TerminalProvider {
+function createSpecialistFeedTerminalProvider(env: NodeJS.ProcessEnv, context: { isVerifiedAdmin?: boolean } = {}): TerminalProvider {
   const command = env.GITBOARD_SPECIALISTS_BIN || "specialists";
+  const isVerifiedAdmin = context.isVerifiedAdmin === true;
   return {
     kind: "specialist-feed",
-    enabled: true,
-    reason: "readonly specialist feed",
+    enabled: isVerifiedAdmin,
+    reason: isVerifiedAdmin ? "readonly specialist feed" : "verified admin required for specialist feed",
     openSession: async ({ jobId }) => {
+      if (!isVerifiedAdmin) throw new Error("verified admin required for specialist feed");
       if (!jobId || !SPECIALIST_JOB_ID_RE.test(jobId)) throw new Error("invalid specialist job id");
       const child = spawn(command, ["feed", jobId, "--follow"], {
         env: buildSpecialistFeedEnv(env),

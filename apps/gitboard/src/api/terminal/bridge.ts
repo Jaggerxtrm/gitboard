@@ -10,6 +10,7 @@ type AuthContext = { isVerifiedAdmin?: boolean };
 type WebSocketUpgradeServer = { upgrade(req: Request, options?: unknown): boolean };
 type SessionState = {
   streamId: string;
+  providerKind: string;
   session: TerminalProviderSession;
   attached: Set<string>;
   ownerConnectionId: string;
@@ -107,6 +108,7 @@ export class TerminalBridge {
       const session = await provider.openSession({ sessionId: msg.sessionId, capabilities: msg.payload.capabilities, jobId: msg.payload.jobId });
       const state: SessionState = {
         streamId: msg.streamId,
+        providerKind: msg.payload.providerKind,
         session,
         attached: new Set([connectionId]),
         ownerConnectionId: connectionId,
@@ -133,6 +135,9 @@ export class TerminalBridge {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
+    if (state.providerKind === "specialist-feed" && this.authContexts.get(connectionId)?.isVerifiedAdmin !== true) {
+      return this.sendError(send, streamId, sessionId, "forbidden", "verified admin required for specialist feed", false);
+    }
     if (!reattachToken || reattachToken !== state.reattachToken) return this.sendError(send, streamId, sessionId, "forbidden", "invalid attach token", false);
     if (state.cleanupTimer) {
       clearTimeout(state.cleanupTimer);
