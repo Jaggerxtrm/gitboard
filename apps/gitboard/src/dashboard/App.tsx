@@ -6,6 +6,7 @@ import { Sidebar } from "./components/shell/Sidebar.tsx";
 import { useShellStore, selectTheme } from "./stores/shell.ts";
 import type { TabId } from "../types/shell.ts";
 import { MainPane } from "./components/shell/MainPane.tsx";
+import { RightSidebar } from "./components/shell/RightSidebar.tsx";
 import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 import { SourcesPanel } from "./components/settings/SourcesPanel.tsx";
@@ -40,8 +41,7 @@ function ShellApp() {
   const selection = useShellStore((s) => s.selection);
   const setSurface = useShellStore((s) => s.setSurface);
   useEffect(() => {
-    const persistedSurface = selection.surface as string;
-    if (persistedSurface === "beads") setSurface("console");
+    if (selection.surface !== "console") setSurface("console");
   }, [selection.surface, setSurface]);
   useGithubActivity({ includeLists: false });
   useRepoTree();
@@ -51,6 +51,7 @@ function ShellApp() {
       <div className="ide-body">
         <Sidebar />
         <MainPane />
+        <RightSidebar />
         <BeadSideDrawer />
       </div>
     </div>

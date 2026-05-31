@@ -10,7 +10,7 @@ function makeStorage() {
   };
 }
 
-describe("shell store drawer persistence", () => {
+describe("shell store drawer and sidebar persistence", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal("localStorage", makeStorage());
@@ -60,6 +60,30 @@ describe("shell store drawer persistence", () => {
     useShellStore.getState().setSurface("console");
 
     expect(useShellStore.getState().selection).toEqual({ surface: "console", tab: "feed", repo: "owner/with-beads" });
+  });
+
+  it("persists sidebar state and width", async () => {
+    const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
+    useShellStore.getState().openSidebar({ beadId: "bead-1", jobId: "job-1" });
+    useShellStore.getState().setSidebarWidth(640);
+    useShellStore.getState().openSidebar({ beadId: "bead-2" });
+    useShellStore.getState().closeSidebar();
+
+    vi.resetModules();
+    const { useShellStore: rehydrated } = await import("../../../src/dashboard/stores/shell.ts");
+    expect(rehydrated.getState().sidebar).toEqual({ open: false, beadId: "bead-2", jobId: null, width: 640 });
+  });
+
+  it("opens sidebar with target and swaps target in place", async () => {
+    const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
+    useShellStore.getState().openSidebar({ beadId: "bead-1", jobId: "job-1" });
+    expect(useShellStore.getState().sidebar).toEqual({ open: true, beadId: "bead-1", jobId: "job-1", width: 480 });
+
+    useShellStore.getState().openSidebar({ beadId: "bead-2" });
+    expect(useShellStore.getState().sidebar).toEqual({ open: true, beadId: "bead-2", jobId: null, width: 480 });
+
+    useShellStore.getState().openSidebar(null);
+    expect(useShellStore.getState().sidebar).toEqual({ open: false, beadId: "bead-2", jobId: null, width: 480 });
   });
 
 });

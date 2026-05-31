@@ -22,6 +22,8 @@ const LS = {
   drawerHeight: "forge-gud9:drawerHeight",
   drawerTab: "forge-gud9:drawerTab",
   drawerSpecialistsScope: "forge-gud9:drawerSpecialistsScope",
+  sidebarState: "forge-70el:sidebarState",
+  sidebarWidth: "forge-70el:sidebarWidth",
 };
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -55,6 +57,8 @@ function defaultDrawerHeight() {
 const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
 const initialDrawerTab = readJSON<DrawerTab>(LS.drawerTab, "logs");
 const initialDrawerSpecialistsScope = readJSON<SpecialistsScope>(LS.drawerSpecialistsScope, "repo");
+const initialSidebarState = readJSON<{ open: boolean; beadId: string | null; jobId: string | null }>(LS.sidebarState, { open: false, beadId: null, jobId: null });
+const initialSidebarWidth = readJSON<number | null>(LS.sidebarWidth, null) ?? 480;
 const initialTerminalSessionId: string | null = null;
 const initialTerminalReattachToken: string | null = null;
 const initialTerminalOutput: string[] = [];
@@ -68,6 +72,7 @@ export interface ShellState {
   drawerHeight: number;
   drawerTab: DrawerTab;
   drawerSpecialistsScope: SpecialistsScope;
+  sidebar: { open: boolean; beadId: string | null; jobId: string | null; width: number };
   terminalSessionId: string | null;
   terminalReattachToken: string | null;
   terminalOutput: string[];
@@ -82,6 +87,9 @@ export interface ShellState {
   setDrawerHeight: (height: number) => void;
   setDrawerTab: (tab: DrawerTab) => void;
   setDrawerSpecialistsScope: (scope: SpecialistsScope) => void;
+  openSidebar: (target: { beadId: string; jobId?: string } | null) => void;
+  closeSidebar: () => void;
+  setSidebarWidth: (width: number) => void;
   setTerminalSessionId: (sessionId: string | null) => void;
   setTerminalReattachToken: (token: string | null) => void;
   appendTerminalOutput: (chunk: string) => void;
@@ -97,6 +105,7 @@ export const useShellStore = create<ShellState>((set) => ({
   drawerHeight: initialDrawerHeight,
   drawerTab: initialDrawerTab,
   drawerSpecialistsScope: initialDrawerSpecialistsScope,
+  sidebar: { ...initialSidebarState, width: initialSidebarWidth },
   terminalSessionId: initialTerminalSessionId,
   terminalReattachToken: initialTerminalReattachToken,
   terminalOutput: initialTerminalOutput,
@@ -171,8 +180,32 @@ export const useShellStore = create<ShellState>((set) => ({
       return { drawerSpecialistsScope: scope };
     }),
 
-  setTerminalSessionId: (sessionId) =>
-    set(() => ({ terminalSessionId: sessionId })),
+  openSidebar: (target) =>
+    set((state) => {
+      const next = target
+        ? { open: true, beadId: target.beadId, jobId: target.jobId ?? null, width: state.sidebar.width }
+        : { open: false, beadId: state.sidebar.beadId, jobId: state.sidebar.jobId, width: state.sidebar.width };
+      writeJSON(LS.sidebarState, { open: next.open, beadId: next.beadId, jobId: next.jobId });
+      return { sidebar: next };
+    }),
+
+  closeSidebar: () =>
+    set((state) => {
+      const next = { ...state.sidebar, open: false };
+      writeJSON(LS.sidebarState, { open: false, beadId: next.beadId, jobId: next.jobId });
+      return { sidebar: next };
+    }),
+
+  setSidebarWidth: (width) =>
+    set((state) => {
+      const viewportWidth = typeof window !== "undefined" && typeof window.innerWidth === "number" ? window.innerWidth : 768;
+      const maxWidth = Math.min(720, viewportWidth - 48);
+      const next = Math.max(320, Math.min(maxWidth, Math.round(width)));
+      writeJSON(LS.sidebarWidth, next);
+      return { sidebar: { ...state.sidebar, width: next } };
+    }),
+
+  setTerminalSessionId: (sessionId) =>    set(() => ({ terminalSessionId: sessionId })),
 
   setTerminalReattachToken: (token) =>
     set(() => ({ terminalReattachToken: token })),
@@ -189,3 +222,4 @@ export const selectRepos = (s: ShellState) => s.repos;
 export const selectSidebarCollapsed = (s: ShellState) => s.sidebarCollapsed;
 export const selectTheme = (s: ShellState) => s.theme;
 export const selectDrawerSpecialistsScope = (s: ShellState) => s.drawerSpecialistsScope;
+export const selectSidebar = (s: ShellState) => s.sidebar;
