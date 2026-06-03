@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,6 +59,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.GITBOARD_SHELL_PROVIDER_ADMIN_TOKEN;
+  delete process.env.GITBOARD_SPECIALISTS_BIN;
   for (const db of openDbs) db.close();
   await rm(dir, { recursive: true, force: true });
   __resetObservabilityRegistryForTests();
@@ -68,8 +70,9 @@ describe("GET /api/specialists/jobs", () => {
     const app = createAppWithDao();
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs?bead_id=bead-1"));
 
-    expect(res.status).toBe(200);
-    const json = await res.json() as { jobs: Array<Record<string, unknown>>; source_health: { source: string; status: string } };
+    const raw = await res.clone().json() as any;
+    expect(res.status, JSON.stringify(raw)).toBe(200);
+    const json = raw as { jobs: Array<Record<string, unknown>>; source_health: { source: string; status: string } };
     expect(json.jobs).toHaveLength(2);
     expect(json.source_health).toEqual(expect.objectContaining({ source: "specialists", status: "fresh" }));
     expect(json.jobs[0]).toEqual(expect.objectContaining({ repoSlug: "repo-b", beadId: "bead-1", chainId: "chain-4", epicId: "epic-4", chainKind: "executor", status: "done", updatedAt: "2023-11-14T22:13:25.000Z" }));
@@ -84,8 +87,10 @@ describe("GET /api/specialists/jobs", () => {
     const app = createAppWithDao();
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs?bead_id=missing"));
 
+    const raw = await res.clone().json() as any;
+    if (res.status !== 200) console.error(raw);
     expect(res.status).toBe(200);
-    const json = await res.json() as { jobs: unknown[] };
+    const json = raw as { jobs: unknown[] };
     expect(json.jobs).toEqual([]);
   });
 
@@ -202,6 +207,46 @@ describe("GET /api/specialists/jobs/:job_id/result", () => {
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ text: "# done", content_type: "text/markdown" });
+  });
+});
+
+
+describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
+  it("returns 403 for non-admin", async () => {
+    const app = createAppWithDao();
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events"));
+    expect(res.status).toBe(403);
+  });
+
+  it("returns structured forensic feed events from sp feed --json", async () => {
+    const repoDir = join(dir, "repo-a");
+    mkdirSync(repoDir, { recursive: true });
+    const repoDirB = join(dir, "repo-b");
+    mkdirSync(repoDirB, { recursive: true });
+    const fakeFeed = join(repoDir, "feed");
+    writeFileSync(fakeFeed, `jobId=$1
+mode=$2
+test "$mode" = "--json" || exit 2
+printf '%s\n' '{"jobId":"'"$jobId"'","event":{"type":"tool"},"forensic_event":{"schema_version":"xtrm.forensic.v1","resource":{"participant_kind":"specialist","participant_role":"executor"},"correlation":{"job_id":"'"$jobId"'"},"redaction":{"status":"clean"}}}'
+`);
+    chmodSync(fakeFeed, 0o755);
+    const fakeFeedB = join(repoDirB, "feed");
+    writeFileSync(fakeFeedB, readFileSync(fakeFeed, "utf-8"));
+    chmodSync(fakeFeedB, 0o755);
+    process.env.GITBOARD_SPECIALISTS_BIN = "/bin/sh";
+
+    const app = createAppWithDao();
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+
+    const raw = await res.clone().json() as any;
+    expect(res.status, JSON.stringify(raw)).toBe(200);
+    const json = raw as { events: Array<{ jobId: string; forensic_event?: { schema_version?: string; resource?: { participant_role?: string }; correlation?: { job_id?: string } } }>; source: string };
+    expect(json.source).toBe("sp feed --json");
+    expect(json.events).toHaveLength(1);
+    expect(json.events[0]?.jobId).toBe("job-1");
+    expect(json.events[0]?.forensic_event?.schema_version).toBe("xtrm.forensic.v1");
+    expect(json.events[0]?.forensic_event?.resource?.participant_role).toBe("executor");
+    expect(json.events[0]?.forensic_event?.correlation?.job_id).toBe("job-1");
   });
 });
 
@@ -403,7 +448,7 @@ function createAppWithDao(reposOverride: Array<{ repoSlug: string; rows: SeedRow
   return app;
 }
 
-function createResultApp(): Hono {
+function createResultApp(_admin = false): Hono {
   const xtrmDb = new Database(":memory:");
   xtrmDb.exec(`
     CREATE TABLE specialist_job_events (
@@ -442,4 +487,3 @@ function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {
   }
   return db;
 }
-

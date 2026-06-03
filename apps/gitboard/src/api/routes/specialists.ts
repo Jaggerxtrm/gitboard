@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { spawn } from "node:child_process";
 import { emit, makeLogEntry } from "../../core/logger.ts";
 import { isVerifiedShellAdminRequest } from "../../core/shell-provider-policy.ts";
 import { createAttachPool } from "../../server/observability/attach-pool.ts";
@@ -19,6 +20,25 @@ export interface SpecialistsDao {
 
 type SpecialistRepoSummary = ReadonlyArray<Pick<RepoEntry, "repoSlug">>;
 type SpecialistRepoList = ReadonlyArray<RepoEntry>;
+
+export type SpecialistForensicFeedEvent = {
+  timestamp?: string;
+  job_id?: string;
+  jobId?: string;
+  specialist?: string;
+  event?: unknown;
+  forensic_event?: {
+    schema_version?: string;
+    event_family?: string;
+    event_name?: string;
+    resource?: { participant_kind?: string; participant_role?: string; [key: string]: unknown };
+    correlation?: { job_id?: string; participant_id?: string; [key: string]: unknown };
+    redaction?: { status?: string; fields?: string[]; rules?: string[] };
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+};
+
 
 type DefaultDaoBundle = {
   dao: SpecialistsDao;
@@ -122,6 +142,18 @@ export function createSpecialistsRouter(
     `).get(jobId) as { event_type?: string; payload?: string } | undefined;
     if (!row) return c.json({ error: "result not found" }, 404);
     return c.json({ text: row.payload ?? "", content_type: "text/markdown" });
+  });
+
+
+  router.get("/jobs/:job_id/feed-events", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
+    const jobId = c.req.param("job_id");
+    const current = resolve();
+    const job = findJobById(current.dao, jobId);
+    const repo = job ? repoLister().find((entry) => entry.repoSlug === job.repoSlug) : undefined;
+    const feed = await runSpecialistFeedJson(jobId, { cwd: repo?.repoPath });
+    if (!feed.ok) return c.json({ error: feed.error }, feed.status);
+    return c.json({ events: feed.events, content_type: "application/x-ndjson", source: "sp feed --json" });
   });
 
   router.get("/jobs/in-flight", async (c) => {
@@ -297,6 +329,75 @@ function summarizeRepos(repos: SpecialistRepoList): SpecialistRepoSummary {
 
 function repoEpochs(repos: SpecialistRepoSummary, epochGetter: (repoSlug: string) => number): Record<string, number> {
   return Object.fromEntries(repos.map((repo) => [repo.repoSlug, epochGetter(repo.repoSlug)]));
+}
+
+
+function findJobById(dao: SpecialistsDao, jobId: string): SpecialistJob | undefined {
+  return [...dao.inFlightJobs(), ...dao.recentJobs(500)].find((job) => job.jobId === jobId || job.beadId === jobId);
+}
+
+const SPECIALIST_JOB_ID_RE = /^[A-Za-z0-9._:-]{3,128}$/;
+
+type SpecialistFeedEventsResult =
+  | { ok: true; events: SpecialistForensicFeedEvent[] }
+  | { ok: false; status: 400 | 404 | 500; error: string };
+
+export async function runSpecialistFeedJson(jobId: string, options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<SpecialistFeedEventsResult> {
+  if (!SPECIALIST_JOB_ID_RE.test(jobId)) return { ok: false, status: 400, error: "invalid job id" };
+  const env = options.env ?? process.env;
+  const command = env.GITBOARD_SPECIALISTS_BIN || "specialists";
+  return new Promise((resolveFeed) => {
+    const child = spawn(command, ["feed", jobId, "--json"], {
+      cwd: options.cwd,
+      env: buildSpecialistFeedEnv(env),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      resolveFeed({ ok: false, status: 500, error: "specialist feed timed out" });
+    }, 10_000);
+
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      resolveFeed({ ok: false, status: 500, error: error.message });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code !== 0) {
+        const message = stripAnsi(stderr || stdout).trim() || `specialist feed exited ${code}`;
+        resolveFeed({ ok: false, status: message.includes("not found") ? 404 : 500, error: message });
+        return;
+      }
+      const parsed = parseForensicFeedNdjson(stdout);
+      if (!parsed.ok) return resolveFeed({ ok: false, status: 500, error: parsed.error });
+      resolveFeed({ ok: true, events: parsed.events });
+    });
+  });
+}
+
+function parseForensicFeedNdjson(stdout: string): { ok: true; events: SpecialistForensicFeedEvent[] } | { ok: false; error: string } {
+  const events: SpecialistForensicFeedEvent[] = [];
+  for (const [index, line] of stdout.split(/\r?\n/).entries()) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line) as SpecialistForensicFeedEvent);
+    } catch {
+      return { ok: false, error: `invalid feed JSON on line ${index + 1}` };
+    }
+  }
+  return { ok: true, events };
+}
+
+function buildSpecialistFeedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...env, NO_COLOR: "1", FORCE_COLOR: "0" };
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\u001b\[[0-9;]*m/g, "");
 }
 
 function cacheKey(prefix: string, repos: SpecialistRepoSummary, epochGetter: (repoSlug: string) => number, ...parts: string[]): string {
