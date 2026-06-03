@@ -146,6 +146,7 @@ export function createSpecialistsRouter(
 
 
   router.get("/jobs/:job_id/feed-events", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
     const jobId = c.req.param("job_id");
     const current = resolve();
     const job = findJobById(current.dao, jobId);
@@ -344,7 +345,7 @@ type SpecialistFeedEventsResult =
 export async function runSpecialistFeedJson(jobId: string, options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<SpecialistFeedEventsResult> {
   if (!SPECIALIST_JOB_ID_RE.test(jobId)) return { ok: false, status: 400, error: "invalid job id" };
   const env = options.env ?? process.env;
-  const command = env.GITBOARD_SPECIALISTS_BIN || "/home/dawid/.nvm/versions/node/v24.15.0/bin/specialists";
+  const command = env.GITBOARD_SPECIALISTS_BIN || "specialists";
   return new Promise((resolveFeed) => {
     const child = spawn(command, ["feed", jobId, "--json"], {
       cwd: options.cwd,

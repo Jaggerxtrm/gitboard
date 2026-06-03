@@ -212,6 +212,12 @@ describe("GET /api/specialists/jobs/:job_id/result", () => {
 
 
 describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
+  it("returns 403 for non-admin", async () => {
+    const app = createAppWithDao();
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events"));
+    expect(res.status).toBe(403);
+  });
+
   it("returns structured forensic feed events from sp feed --json", async () => {
     const repoDir = join(dir, "repo-a");
     mkdirSync(repoDir, { recursive: true });
@@ -230,7 +236,7 @@ printf '%s\n' '{"jobId":"'"$jobId"'","event":{"type":"tool"},"forensic_event":{"
     process.env.GITBOARD_SPECIALISTS_BIN = "/bin/sh";
 
     const app = createAppWithDao();
-    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events"));
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
 
     const raw = await res.clone().json() as any;
     expect(res.status, JSON.stringify(raw)).toBe(200);
@@ -481,4 +487,3 @@ function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {
   }
   return db;
 }
-
