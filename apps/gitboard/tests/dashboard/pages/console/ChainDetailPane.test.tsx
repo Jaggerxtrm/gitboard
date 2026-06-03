@@ -62,20 +62,20 @@ describe("ChainDetailPane", () => {
     render(<ChainDetailPane chain={chain("running")} />);
 
     const toggle = await screen.findByRole("button", { name: /terminal feed/i });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(await screen.findByLabelText("terminal stream")).toHaveTextContent("AUTO+");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(await screen.findByLabelText("terminal stream").then((node) => node.textContent)).toContain("AUTO+");
   });
 
   it("renders forensic feed events and keeps result fallback", async () => {
     render(<ChainDetailPane chain={chain("done")} />);
 
-    expect(await screen.findByText("forensic events")).toBeInTheDocument();
-    expect(screen.getByText("v1")).toBeInTheDocument();
-    expect(screen.getByText("chain/participant_joined")).toBeInTheDocument();
-    expect(screen.getByText("agent/executor")).toBeInTheDocument();
-    expect(screen.getByText("job:job-done")).toBeInTheDocument();
-    expect(screen.getByText("redacted")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /run result/i })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("forensic events")).toBeTruthy());
+    expect(screen.getByText("v1").textContent).toBe("v1");
+    expect(screen.getByText("chain/participant_joined").textContent).toBe("chain/participant_joined");
+    expect(screen.getByText("agent/executor").textContent).toBe("agent/executor");
+    expect(screen.getByText("job:job-done").textContent).toBe("job:job-done");
+    expect(screen.getByText("redacted").textContent).toBe("redacted");
+    expect(screen.getByRole("button", { name: /run result/i })).toBeTruthy();
   });
 
   it("falls back when forensic feed endpoint fails", async () => {
@@ -87,8 +87,8 @@ describe("ChainDetailPane", () => {
 
     render(<ChainDetailPane chain={chain("done")} />);
 
-    expect(await screen.findByRole("button", { name: /run result/i })).toBeInTheDocument();
-    expect(screen.queryByText("forensic events")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /run result/i })).toBeTruthy();
+    expect(screen.queryByText("forensic events")).toBeNull();
   });
 });
 

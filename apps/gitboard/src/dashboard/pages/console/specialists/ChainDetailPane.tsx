@@ -433,7 +433,7 @@ function ForensicFeedTimeline({ events }: { events: FeedEventPayload[] | null })
   if (!events || events.length === 0) return null;
 
   return (
-    <section className="console-specialists-job-forensic">
+    <section className="console-specialists-job-forensic" aria-label="forensic events">
       <div className="console-specialists-job-forensic-head">forensic events</div>
       <div className="console-specialists-job-forensic-list">
         {events.map((event, index) => (
