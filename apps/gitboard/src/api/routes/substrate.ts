@@ -119,11 +119,19 @@ function queryIssues(db: Database | null | undefined, projectId: string): BeadIs
   if (!db) return [];
   logSchemaColumnsOnce(db);
   const rows = db.query("SELECT issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at FROM substrate_issues WHERE repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '') ORDER BY priority ASC, created_at DESC, issue_id ASC").all(projectId) as Array<Record<string, unknown>>;
+  const issueIndex = new Map(rows.map((row) => [String(row.issue_id), row] as const));
   const dependencies = db.query("SELECT issue_id, dep_issue_id, relation FROM substrate_dependencies WHERE repo_slug = ?").all(projectId) as Array<{ issue_id: string; dep_issue_id: string; relation: string }>;
   const depsByIssue = new Map<string, BeadDependency[]>();
   for (const dep of dependencies) {
     const list = depsByIssue.get(dep.issue_id) ?? [];
-    list.push({ id: dep.dep_issue_id, title: "", status: "open", dependency_type: dep.relation });
+    const target = issueIndex.get(dep.dep_issue_id);
+    list.push({
+      id: dep.dep_issue_id,
+      title: target == null ? "" : String(target.title ?? ""),
+      status: target == null ? "open" : String(target.state ?? "open"),
+      issue_type: target == null ? undefined : String(target.issue_type ?? "task"),
+      dependency_type: dep.relation,
+    });
     depsByIssue.set(dep.issue_id, list);
   }
   return rows.map((row) => ({
@@ -176,8 +184,15 @@ function parseJsonArray(value: unknown): string[] {
 
 function queryDependents(db: Database | null | undefined, projectId: string, issueId: string): BeadDependency[] {
   if (!db) return [];
+  const target = db.query("SELECT issue_id, title, state, issue_type FROM substrate_issues WHERE repo_slug = ? AND issue_id = ? LIMIT 1").get(projectId, issueId) as { issue_id: string; title: string | null; state: string | null; issue_type: string | null } | undefined;
   const rows = db.query("SELECT issue_id, relation FROM substrate_dependencies WHERE repo_slug = ? AND dep_issue_id = ? ORDER BY issue_id ASC").all(projectId, issueId) as Array<{ issue_id: string; relation: string }>;
-  return rows.map((row) => ({ id: row.issue_id, title: "", status: "open", dependency_type: row.relation }));
+  return rows.map((row) => ({
+    id: row.issue_id,
+    title: target == null ? "" : String(target.title ?? ""),
+    status: target == null ? "open" : String(target.state ?? "open"),
+    issue_type: target == null ? undefined : String(target.issue_type ?? "task"),
+    dependency_type: row.relation,
+  }));
 }
 
 function countIssues(db: Database, projectId: string): number {

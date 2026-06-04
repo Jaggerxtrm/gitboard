@@ -31,4 +31,27 @@ describe("substrate projects", () => {
 
     db.close();
   });
+
+  it("hydrates dependency metadata from substrate issues for closed targets", async () => {
+    const db = createXtrmDatabase(dbPath);
+    db.exec(`
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at)
+      VALUES ('demo', 'open-1', 'Open issue', 'open', 'task', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at, closed_at)
+      VALUES ('demo', 'closed-1', 'Closed target', 'closed', 'bug', 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation, created_at)
+      VALUES ('demo', 'open-1', 'closed-1', 'blocks', CURRENT_TIMESTAMP);
+    `);
+    const app = createSubstrateRouter(db);
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/issues/open-1", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { issue: { dependencies: Array<{ id: string; title: string; status: string; issue_type?: string }> } };
+
+    expect(body.issue.dependencies).toEqual([
+      expect.objectContaining({ id: 'closed-1', title: 'Closed target', status: 'closed', issue_type: 'bug' }),
+    ]);
+
+    db.close();
+  });
 });

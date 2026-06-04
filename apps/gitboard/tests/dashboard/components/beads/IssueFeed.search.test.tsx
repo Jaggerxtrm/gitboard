@@ -34,6 +34,22 @@ afterEach(() => {
 });
 
 describe("IssueFeed search", () => {
+  it("keeps dependency grouping from full loaded map while filtering visible rows", () => {
+    renderFeed([
+      issue("forge-parent", "Parent blocker", "open", [{ id: "forge-child", title: "Child task", status: "open", dependency_type: "blocks" }]),
+      issue("forge-child", "Child task", "open", [{ id: "forge-parent", title: "Parent blocker", status: "open", dependency_type: "blocked_by" }]),
+      issue("forge-hidden", "Hidden sibling", "open"),
+    ]);
+
+    const input = screen.getByRole("searchbox", { name: "Search beads in this project" });
+    fireEvent.change(input, { target: { value: "child" } });
+
+    const childRow = screen.getByText("Child task").closest("article");
+    expect(childRow).toHaveClass("is-child");
+    expect(childRow).toHaveClass("is-parent-child");
+    expect(screen.queryByText("Parent blocker")).not.toBeInTheDocument();
+  });
+
   it("filters by id prefix and clears from the inline affordance", () => {
     renderFeed();
 
@@ -71,8 +87,8 @@ describe("IssueFeed search", () => {
   });
 });
 
-function renderFeed() {
-  const issues = [
+function renderFeed(customIssues?: BeadIssue[]) {
+  const issues = customIssues ?? [
     issue("forge-58ek", "Memory leak", "open"),
     issue("forge-58zz", "Cache leak", "in_progress"),
     issue("forge-abcd", "Deploy polish", "open"),
@@ -92,7 +108,7 @@ function renderFeed() {
   );
 }
 
-function issue(id: string, title: string, status: string): BeadIssue {
+function issue(id: string, title: string, status: string, dependencies: BeadIssue["dependencies"] = []): BeadIssue {
   return {
     id,
     title,
@@ -105,7 +121,7 @@ function issue(id: string, title: string, status: string): BeadIssue {
     created_by: null,
     updated_at: "2026-01-01T00:00:00.000Z",
     project_id: "gitboard",
-    dependencies: [],
+    dependencies,
     related_ids: [],
     labels: [],
   };
