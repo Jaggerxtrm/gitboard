@@ -390,11 +390,24 @@ function readXtrmIssues(db: Database, projectId: string, includeClosed: boolean)
     WHERE ${where}
     ORDER BY priority ASC, created_at DESC, issue_id ASC
   `).all(projectId) as Array<Record<string, unknown>>;
+  const dependencyTargets = db.query(`
+    SELECT issue_id, title, state, issue_type
+    FROM substrate_issues
+    WHERE repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '')
+  `).all(projectId) as Array<Record<string, unknown>>;
+  const dependencyTargetIndex = new Map(dependencyTargets.map((row) => [String(row.issue_id), row] as const));
   const dependencies = db.query("SELECT issue_id, dep_issue_id, relation FROM substrate_dependencies WHERE repo_slug = ?").all(projectId) as Array<{ issue_id: string; dep_issue_id: string; relation: string }>;
   const depsByIssue = new Map<string, BeadDependency[]>();
   for (const dep of dependencies) {
     const list = depsByIssue.get(dep.issue_id) ?? [];
-    list.push({ id: dep.dep_issue_id, title: "", status: "open", dependency_type: dep.relation });
+    const target = dependencyTargetIndex.get(dep.dep_issue_id);
+    list.push({
+      id: dep.dep_issue_id,
+      title: target == null ? "" : String(target.title ?? ""),
+      status: target == null ? "open" : String(target.state ?? "open"),
+      issue_type: target == null ? undefined : String(target.issue_type ?? "task"),
+      dependency_type: dep.relation,
+    });
     depsByIssue.set(dep.issue_id, list);
   }
 
