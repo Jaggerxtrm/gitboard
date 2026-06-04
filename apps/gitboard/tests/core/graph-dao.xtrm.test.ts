@@ -26,6 +26,7 @@ describe("GraphDao xtrm source", () => {
     seedIssue("B", "Beta", "blocked", 2, "bug");
     seedIssue("C", "Closed", "closed", 3, "feature");
     db.query("INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation, created_at) VALUES ('repo-a', 'A', 'B', 'blocks', CURRENT_TIMESTAMP)").run();
+    db.query("INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation, created_at) VALUES ('repo-a', 'A', 'C', 'tracks', CURRENT_TIMESTAMP)").run();
     db.query("INSERT INTO specialist_jobs (repo_slug, job_id, bead_id, specialist, status, chain_kind, updated_at) VALUES ('repo-a', 'job-1', 'A', 'executor', 'running', 'executor', '2026-01-01T00:00:00.000Z')").run();
     db.query("INSERT INTO specialist_jobs (repo_slug, job_id, bead_id, specialist, status, chain_kind, updated_at) VALUES ('repo-a', 'job-2', 'B', 'reviewer', 'done', 'reviewer', '2026-01-01T00:00:01.000Z')").run();
     db.query("INSERT INTO materialization_state (source_key, last_success_at, last_status) VALUES ('beads:repo-a', CURRENT_TIMESTAMP, 'success')").run();
@@ -34,8 +35,9 @@ describe("GraphDao xtrm source", () => {
 
     expect(snapshot.freshness).toBe("fresh");
     expect(snapshot.sourceHealth).toEqual(expect.objectContaining({ source: "graph", status: "fresh" }));
-    expect(snapshot.graph.nodes.map((node) => node.id).sort()).toEqual(["A", "B"]);
-    expect(snapshot.graph.edges).toEqual([{ from: "A", to: "B", type: "blocks" }]);
+    expect(snapshot.graph.nodes.map((node) => node.id).sort()).toEqual(["A", "B", "C"]);
+    expect(snapshot.graph.nodes.find((node) => node.id === "C")).toEqual(expect.objectContaining({ title: "Closed", status: "closed", type: "feature" }));
+    expect(snapshot.graph.edges).toEqual(expect.arrayContaining([{ from: "A", to: "B", type: "blocks" }, { from: "A", to: "C", type: "tracks" }]));
     expect(snapshot.graph.specialists).toEqual([expect.objectContaining({ bead_id: "A", job_id: "job-1", status: "running" })]);
 
     const includeClosed = createGraphDao({ xtrmDb: db }).getGraphSnapshot("repo-a", true);

@@ -62,6 +62,7 @@ export interface BeadDependency {
   id: string;
   title: string;
   status: Status;
+  issue_type?: IssueType;
   dependency_type: "blocks" | "blocked_by" | "tracks" | "related" | "relates-to" | "parent" | "parent-child" | "discovered-from" | "until" | "caused-by" | "validates" | "supersedes" | (string & {});
 }
 

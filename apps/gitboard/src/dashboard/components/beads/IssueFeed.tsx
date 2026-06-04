@@ -81,7 +81,6 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   const searchClosed = useMemo(() => filterIssuesForFeed(closedIssues, query), [closedIssues, query]);
   const visibleIssues = searchOpen.issues;
   const visibleClosedIssues = searchClosed.issues;
-  const visibleIssueById = useMemo(() => new Map([...visibleIssues, ...visibleClosedIssues].map((issue) => [issue.id, issue])), [visibleClosedIssues, visibleIssues]);
   const searchStats = useMemo(() => ({
     prefixMatchCount: searchOpen.prefixMatchCount + searchClosed.prefixMatchCount,
     titleMatchCount: searchOpen.titleMatchCount + searchClosed.titleMatchCount,
@@ -93,15 +92,15 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
     [visibleIssues],
   );
   const openIssues = useMemo(() => visibleIssues.filter((issue) => issue.status !== "in_progress"), [visibleIssues]);
-  const blockingChildren = useMemo(() => groupChildrenByBlocker(openIssues, visibleIssueById), [openIssues, visibleIssueById]);
+  const blockingChildren = useMemo(() => groupChildrenByBlocker(openIssues, issueById), [issueById, openIssues]);
   const blockedChildIds = useMemo(() => getGroupedChildIds(blockingChildren), [blockingChildren]);
-  const activeChildren = useMemo(() => groupChildrenByParent(openIssues, visibleIssueById, blockedChildIds), [blockedChildIds, openIssues, visibleIssueById]);
-  const closedChildren = useMemo(() => groupChildrenByParent(visibleClosedIssues, visibleIssueById, new Set()), [visibleClosedIssues, visibleIssueById]);
-  const topLevelIssues = useMemo(() => openIssues.filter((issue) => !blockedChildIds.has(issue.id) && !getParentId(issue, visibleIssueById)), [blockedChildIds, openIssues, visibleIssueById]);
+  const activeChildren = useMemo(() => groupChildrenByParent(openIssues, issueById, blockedChildIds), [blockedChildIds, issueById, openIssues]);
+  const closedChildren = useMemo(() => groupChildrenByParent(visibleClosedIssues, issueById, new Set()), [issueById, visibleClosedIssues]);
+  const topLevelIssues = useMemo(() => openIssues.filter((issue) => !blockedChildIds.has(issue.id) && !getParentId(issue, issueById)), [blockedChildIds, issueById, openIssues]);
   const readyCount = useMemo(() => openIssues.filter((issue) => getDisplayStatus(issue) === "open").length, [openIssues]);
   const completedIssues = useMemo(
-    () => visibleClosedIssues.filter((issue) => !getParentId(issue, visibleIssueById)).sort((a, b) => getCompletedAt(b).localeCompare(getCompletedAt(a))),
-    [visibleClosedIssues, visibleIssueById],
+    () => visibleClosedIssues.filter((issue) => !getParentId(issue, issueById)).sort((a, b) => getCompletedAt(b).localeCompare(getCompletedAt(a))),
+    [issueById, visibleClosedIssues],
   );
 
   useEffect(() => {
