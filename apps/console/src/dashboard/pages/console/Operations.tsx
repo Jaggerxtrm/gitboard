@@ -4,6 +4,11 @@ import { DatabaseIcon, GearIcon, GraphIcon, PulseIcon, XIcon } from "@primer/oct
 import { selectRepos, selectSelection, useShellStore } from "../../stores/shell.ts";
 import { useChains, type ChainSummary } from "../../hooks/useChains.ts";
 import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
+import {
+  createObserveFixtureRequest,
+  queryStaticObserveDatasource,
+} from "../../lib/observability-datasource.ts";
+import type { ObserveEvidenceRef, ObserveQueryResponse } from "../../../types/observability.ts";
 
 type DataSource = "specialists" | "beads" | "github" | "materializer";
 type LabField = "chain" | "role" | "status" | "bead" | "latency" | "model" | "updated";
@@ -75,6 +80,7 @@ export function Operations() {
   const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
   const visibleChains = useMemo(() => chains.filter((chain) => matchesQuery(chain, query)).slice(0, 12), [chains, query]);
   const pulse = useMemo(() => buildPulse(chains), [chains]);
+  const observeSnapshot = useMemo(() => buildObserveSnapshot(), []);
 
   const applyTemplate = (template: QueryTemplate) => {
     setActiveTemplateId(template.id);
@@ -130,6 +136,12 @@ export function Operations() {
           <PulseCell label="roles" value={pulse.roles} note="unique" />
           <PulseCell label="p95 latency" value={`${pulse.p95}s`} note="local estimate" />
         </div>
+
+        <section className="operations-observe-grid" aria-label="Phase 0 observability fixtures">
+          <ObserveStatPanel response={observeSnapshot.metric} onEvidence={(evidence) => setDrawer(evidenceDrawer(evidence))} />
+          <ObserveTimeSeriesPanel response={observeSnapshot.metric} onEvidence={(evidence) => setDrawer(evidenceDrawer(evidence))} />
+          <ObserveThresholdPanel response={observeSnapshot.alert} onEvidence={(evidence) => setDrawer(evidenceDrawer(evidence))} />
+        </section>
 
         <section className="operations-query-panel">
           <header className="operations-panel-head">
@@ -229,6 +241,58 @@ function Panel({ title, action, children }: { title: string; action?: ReactNode;
   return <section className="operations-panel"><header><span>{title}</span>{action}</header>{children}</section>;
 }
 
+function ObserveStatPanel({ response, onEvidence }: { response: ObserveQueryResponse; onEvidence: (evidence: ObserveEvidenceRef) => void }) {
+  const latest = latestMetricValue(response);
+  return (
+    <Panel title="Fixture stat" action={<EvidenceButton label="stat" evidence={response.evidence[0]} onEvidence={onEvidence} />}>
+      <div className="operations-observe-stat">
+        <b>{latest}</b>
+        <span>xtrm_job_state</span>
+        <small>{response.freshness.cacheStatus}</small>
+      </div>
+    </Panel>
+  );
+}
+
+function ObserveTimeSeriesPanel({ response, onEvidence }: { response: ObserveQueryResponse; onEvidence: (evidence: ObserveEvidenceRef) => void }) {
+  const samples = response.data.kind === "metric_matrix" ? response.data.series.flatMap((series) => series.samples) : [];
+  const max = Math.max(1, ...samples.map((sample) => sample.value));
+
+  return (
+    <Panel title="Fixture time series" action={<EvidenceButton label="time series" evidence={response.evidence[0]} onEvidence={onEvidence} />}>
+      <div className="operations-observe-series" aria-label="Fixture metric matrix">
+        {samples.map((sample) => (
+          <span key={`${sample.tUnixMs}-${sample.value}`} style={{ height: `${Math.max(10, (sample.value / max) * 100)}%` }}>
+            <b>{sample.value}</b>
+          </span>
+        ))}
+      </div>
+      <div className="operations-observe-meta">
+        <span>{response.signalKind}</span>
+        <span>{response.evidence.length} evidence</span>
+      </div>
+    </Panel>
+  );
+}
+
+function ObserveThresholdPanel({ response, onEvidence }: { response: ObserveQueryResponse; onEvidence: (evidence: ObserveEvidenceRef) => void }) {
+  const alert = response.data.kind === "alerts" ? response.data.alerts[0] : null;
+  return (
+    <Panel title="Fixture threshold" action={<EvidenceButton label="threshold" evidence={response.evidence[0]} onEvidence={onEvidence} />}>
+      <div className={alert?.state === "firing" ? "operations-threshold is-firing" : "operations-threshold"}>
+        <span>{alert?.alertName ?? "No alert"}</span>
+        <b>{alert?.state ?? "unknown"}</b>
+        <small>{alert?.severity ?? "info"}</small>
+      </div>
+    </Panel>
+  );
+}
+
+function EvidenceButton({ label, evidence, onEvidence }: { label: string; evidence: ObserveEvidenceRef | undefined; onEvidence: (evidence: ObserveEvidenceRef) => void }) {
+  if (!evidence) return null;
+  return <button type="button" aria-label={`open ${label} ${evidence.title}`} onClick={() => onEvidence(evidence)}>evidence</button>;
+}
+
 function PulseCell({ label, value, note, tone }: { label: string; value: string | number; note: string; tone?: "warn" }) {
   return <button type="button" className={tone === "warn" ? "operations-pulse-cell is-warn" : "operations-pulse-cell"}><span>{label}</span><b>{value}</b><small>{note}</small></button>;
 }
@@ -255,6 +319,28 @@ function buildPulse(chains: ChainSummary[]) {
     failed: chains.filter((chain) => chain.status === "failed" || chain.status === "error").length,
     roles: new Set(chains.flatMap((chain) => chain.roles.map((role) => role.role))).size,
     p95,
+  };
+}
+
+function buildObserveSnapshot() {
+  return {
+    metric: queryStaticObserveDatasource(createObserveFixtureRequest("metric")),
+    alert: queryStaticObserveDatasource(createObserveFixtureRequest("alert")),
+  };
+}
+
+function latestMetricValue(response: ObserveQueryResponse) {
+  if (response.data.kind !== "metric_matrix") return "-";
+  const samples = response.data.series.flatMap((series) => series.samples);
+  return samples.at(-1)?.value ?? "-";
+}
+
+function evidenceDrawer(evidence: ObserveEvidenceRef): DrawerTarget {
+  return {
+    kind: "entity",
+    title: evidence.title,
+    body: evidence.queryText ?? "Fixture evidence carries redaction, correlation, links, and time range metadata.",
+    meta: `${evidence.kind} / ${evidence.redaction?.status ?? "unknown"}`,
   };
 }
 

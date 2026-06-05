@@ -85,4 +85,20 @@ describe("Console Operations query lab", () => {
     expect(screen.getAllByText("from github.events join materializer.cursors summarize freshness by repo,resource")).toHaveLength(2);
     expect(useShellStore.getState().selection.tab).toBe("operations");
   });
+
+  it("renders phase 0 observability fixture panels with evidence drilldown", () => {
+    render(<Operations />);
+
+    expect(screen.getByText("Fixture stat")).toBeInTheDocument();
+    expect(screen.getByText("Fixture time series")).toBeInTheDocument();
+    expect(screen.getByText("Fixture threshold")).toBeInTheDocument();
+    expect(screen.getByText("fixture")).toBeInTheDocument();
+    expect(screen.getByText("SpecialistQueueDepthHigh")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /open stat metric fixture evidence/i }));
+
+    expect(screen.getByText("metric fixture evidence")).toBeInTheDocument();
+    expect(screen.getByText("sum by (repo, participant_role, state) (xtrm_job_state)")).toBeInTheDocument();
+    expect(useShellStore.getState().selection.tab).toBe("operations");
+  });
 });
