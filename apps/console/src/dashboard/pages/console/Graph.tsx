@@ -23,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useShellStore, selectRepos, selectSelection } from "../../stores/shell.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
+import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import { useGraphData } from "../../hooks/useGraphData.ts";
 import { partitionGraph, type BucketGroup, type ClusterGroup } from "./graph/clusters.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "./graph/agent-roles.ts";
@@ -32,6 +33,7 @@ import { CustomEdge } from "./graph/edges/CustomEdge.tsx";
 import { EdgeMarkers } from "./graph/edges/EdgeMarkers.tsx";
 import { TYPE_CONFIG } from "../../lib/type-palette.ts";
 import type { GraphNode, GraphSpecialist } from "../../../types/graph.ts";
+import type { BeadIssue } from "../../../types/beads.ts";
 
 const NODE_TYPES = { beadNode: BeadNode };
 const EDGE_TYPES = { custom: CustomEdge };
@@ -280,7 +282,6 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 export function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: GraphSpecialist | null; wide?: boolean }) {
-  const openSidebar = useShellStore((state) => state.openSidebar);
   const isRunning = specialist?.status === "running";
   const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
   const typeLabel = TYPE_LABEL[node.type] ?? node.type;
@@ -288,16 +289,12 @@ export function NodeChip({ node, specialist, wide }: { node: GraphNode; speciali
   const agentCat: AgentCategory = categoryFor(specialist?.role);
   const classes = ["g-node", "g-node-inline", wide ? "g-node-wide" : "", isRunning ? "act" : ""].filter(Boolean).join(" ");
   const handleClick = () => {
-    if (!specialist) return;
-    const previous = useShellStore.getState().sidebar;
-    logClientEvent("chip.click", { source: "graph_node", beadId: node.id, jobId: specialist.job_id ?? null });
-    openSidebar({ beadId: node.id, jobId: specialist.job_id ?? undefined });
-    logClientEvent("chip.sidebar.dispatched", {
+    logClientEvent("chip.click", { source: "graph_node", beadId: node.id, jobId: specialist?.job_id ?? null });
+    beadSideDrawer.open({ beadId: node.id, jobId: specialist?.job_id ?? null, issue: graphNodeToIssue(node) });
+    logClientEvent("chip.inspector.dispatched", {
       source: "graph_node",
       beadId: node.id,
-      jobId: specialist.job_id ?? null,
-      swap: Boolean(previous.open && previous.beadId !== node.id),
-      prevSidebar: previous.open ? { beadId: previous.beadId, jobId: previous.jobId } : null,
+      jobId: specialist?.job_id ?? null,
     });
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -329,6 +326,25 @@ export function NodeChip({ node, specialist, wide }: { node: GraphNode; speciali
       </div>
     </div>
   );
+}
+
+function graphNodeToIssue(node: GraphNode): BeadIssue {
+  return {
+    id: node.id,
+    title: node.title,
+    description: null,
+    status: node.status,
+    priority: node.priority,
+    issue_type: node.type,
+    owner: null,
+    created_at: "",
+    created_by: null,
+    updated_at: "",
+    project_id: "",
+    dependencies: [],
+    related_ids: [],
+    labels: [],
+  };
 }
 
 function OrphanRow({ node }: { node: GraphNode }) {

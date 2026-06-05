@@ -3,6 +3,7 @@ import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";
 import { useShellStore, selectDrawerSpecialistsScope, selectRepos, selectSelection } from "../../stores/shell.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
 import { getSpecialistRepoScope, matchesSpecialistScope } from "../../lib/specialist-scope.ts";
+import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import type { SpecialistJob } from "../../../types/specialists.ts";
 
 const LIVE_STATUSES = new Set(["starting", "running", "waiting"]);
@@ -37,15 +38,12 @@ export function SpecialistsTabPanel() {
   };
 
   const handleRowOpen = (job: SpecialistJob) => {
-    const previous = useShellStore.getState().sidebar;
-    logClientEvent("drawer.specialists.chip.clicked", { jobId: job.jobId, beadId: job.beadId, target: "sidebar" });
-    useShellStore.getState().openSidebar({ beadId: job.beadId, jobId: job.jobId ?? undefined });
-    logClientEvent("chip.sidebar.dispatched", {
+    logClientEvent("drawer.specialists.chip.clicked", { jobId: job.jobId, beadId: job.beadId, target: "inspector" });
+    beadSideDrawer.open({ beadId: job.beadId, jobId: job.jobId, issue: jobToIssue(job) });
+    logClientEvent("chip.inspector.dispatched", {
       source: "drawer_row",
       beadId: job.beadId,
       jobId: job.jobId ?? null,
-      swap: Boolean(previous.open && previous.beadId !== job.beadId),
-      prevSidebar: previous.open ? { beadId: previous.beadId, jobId: previous.jobId } : null,
     });
   };
 
@@ -113,4 +111,23 @@ function formatElapsed(updatedAt: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+}
+
+function jobToIssue(job: SpecialistJob) {
+  return {
+    id: job.beadId,
+    title: job.specialist ?? job.chainKind ?? job.beadId,
+    description: job.lastOutput,
+    status: job.status,
+    priority: 3,
+    issue_type: "task",
+    owner: null,
+    created_at: job.updatedAt,
+    created_by: null,
+    updated_at: job.updatedAt,
+    project_id: job.repoSlug,
+    dependencies: [],
+    related_ids: [],
+    labels: [],
+  };
 }

@@ -18,7 +18,7 @@ import type {
   Memory,
 } from "../../../types/beads.ts";
 import type { RepoNode, BeadsTab } from "../../../types/shell.ts";
-import { useShellStore } from "../../stores/shell.ts";
+import { beadSideDrawer, useBeadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 
 const REFETCH_COALESCE_MS = 1_500;
 const CLOSED_HISTORY_LIMIT = 3000;
@@ -145,7 +145,6 @@ function sameInteractions(next: Interaction[] | null, current: Interaction[]): b
 }
 
 export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) {
-  const openSidebar = useShellStore((store) => store.openSidebar);
   const [state, setState] = useState<State>(INITIAL);
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -306,6 +305,11 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
   useWebSocket("substrate:changes", handleBeadsMessage);
 
   const specialistByIssueId = useMemo(() => buildSpecialistByIssueId(inFlight.jobs, state.project), [inFlight.jobs, state.project]);
+  const issueById = useMemo(() => new Map([...state.issues, ...state.closedIssues].map((i) => [i.id, i])), [state.closedIssues, state.issues]);
+
+  useEffect(() => {
+    useBeadSideDrawer.getState().setContext(state.project?.id ?? null, issueById, state.memories);
+  }, [issueById, state.memories, state.project?.id]);
 
   useEffect(() => {
     if (!state.project || state.loading) return;
@@ -388,8 +392,8 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
 
   const onIssueOpen = useCallback((issue: BeadIssue) => {
     logClientEvent("beads.feed.row_open", { projectId: state.project?.id ?? null, beadId: issue.id });
-    openSidebar({ beadId: issue.id });
-  }, [openSidebar, state.project?.id]);
+    beadSideDrawer.open({ beadId: issue.id, issue });
+  }, [state.project?.id]);
 
   const onIssueSelect = useCallback(async (issue: BeadIssue) => {
     if (!state.project) return;
@@ -421,7 +425,6 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
   }
   if (!state.project) return null;
 
-  const issueById = new Map([...state.issues, ...state.closedIssues].map((i) => [i.id, i]));
   const selectedIssue = selectedId ? issueById.get(selectedId) : null;
 
   return (
