@@ -18,6 +18,10 @@ vi.mock("../../../../src/dashboard/hooks/useInFlightJobs.ts", () => ({
   useInFlightJobs: () => ({ jobs: inFlightJobs, groups: [], loading: false, error: null }),
 }));
 
+vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({
+  logClientEvent: vi.fn(),
+}));
+
 vi.mock("../../../../src/dashboard/components/beads/IssueFeed.tsx", () => ({
   IssueFeed: ({ issues, closedIssues, specialistByIssueId }: { issues: BeadIssue[]; closedIssues: BeadIssue[]; specialistByIssueId?: Map<string, { role: string; state: string; jobId: string | null }> }) => (
     <div>
@@ -75,6 +79,14 @@ beforeEach(() => {
 });
 
 describe("BeadsRepoView realtime updates", () => {
+  it("renders a feed-shaped loading state before project data resolves", () => {
+    vi.spyOn(substrateApi, "listProjects").mockReturnValue(new Promise<BeadsProject[]>(() => undefined));
+
+    render(<BeadsRepoView repo={{ fullName: "owner/repo-a", displayName: "repo-a", lastActivityAt: null, openBeadsCount: 1, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: { label: "dolt", title: "Beads reading from Dolt", healthy: true }, hasGithub: true, hasBeads: true }} tab="feed" />);
+
+    expect(screen.getByLabelText("Loading beads project")).toHaveAttribute("aria-busy", "true");
+  });
+
   it("renders open issues before closed history finishes loading", async () => {
     let resolveClosed!: (issues: BeadIssue[]) => void;
     vi.spyOn(substrateApi, "listClosedIssues").mockReturnValue(new Promise((resolve) => { resolveClosed = resolve; }));
@@ -83,7 +95,7 @@ describe("BeadsRepoView realtime updates", () => {
 
     expect(await screen.findByText("Initial issue")).toBeInTheDocument();
     expect(substrateApi.listIssues).toHaveBeenCalledWith(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 });
-    expect(substrateApi.listClosedIssues).toHaveBeenCalledWith(project.id, 50);
+    expect(substrateApi.listClosedIssues).toHaveBeenCalledWith(project.id, 3000);
 
     act(() => resolveClosed([{ ...issue, id: "GB-closed", title: "Closed issue", status: "closed" }]));
     expect(await screen.findByText("Closed issue")).toBeInTheDocument();

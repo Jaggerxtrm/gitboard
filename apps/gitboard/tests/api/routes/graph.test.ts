@@ -94,13 +94,23 @@ describe("GET /api/console/graph", () => {
   it("includes closed nodes when include_closed=true", async () => {
     const app = createApp();
     const openRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
-    const openJson = await openRes.json() as { nodes: Array<{ id: string }> };
+    const openJson = await openRes.json() as { nodes: Array<{ id: string; status: string }>; edges: Array<{ from: string; to: string }> };
     const closedRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=true"));
-    const closedJson = await closedRes.json() as { nodes: Array<{ id: string }> };
+    const closedJson = await closedRes.json() as { nodes: Array<{ id: string; status: string }>; edges: Array<{ from: string; to: string }> };
 
     expect(closedJson.nodes.length).toBeGreaterThan(openJson.nodes.length);
     expect(openJson.nodes.some((node) => node.id === "gitboard-4")).toBe(true);
     expect(closedJson.nodes.some((node) => node.id === "gitboard-6")).toBe(true);
+    expect(closedJson.nodes.find((node) => node.id === "gitboard-6")?.status).toBe("closed");
+  });
+
+  it("keeps historical dependency targets connected when include_closed=true", async () => {
+    const app = createApp();
+    const res = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=true"));
+    const json = await res.json() as { nodes: Array<{ id: string; title: string; status: string }>; edges: Array<{ from: string; to: string; type: string }> };
+
+    expect(json.edges.some((edge) => edge.from === "gitboard-3" && edge.to === "gitboard-4" && edge.type === "supersedes")).toBe(true);
+    expect(json.nodes.find((node) => node.id === "gitboard-4")).toEqual(expect.objectContaining({ title: "D", status: "closed" }));
   });
 
   it("reuses cached scan and issue data until explicit refresh", async () => {

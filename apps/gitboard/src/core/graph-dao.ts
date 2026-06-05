@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { basename, dirname } from "node:path";
 import { createAttachPool } from "../server/observability/attach-pool.ts";
 import { emit, makeLogEntry } from "./logger.ts";
 import { createObservabilityDao } from "../server/observability/dao.ts";
@@ -372,12 +373,26 @@ async function readIssues(project: BeadsProject, includeClosed: boolean): Promis
 
 function resolveXtrmSource(db: Database, projectId: string | null | undefined): { sourceKey: string; projectId: string; path: string } | null {
   const normalizedProjectId = projectId?.trim();
-  const row = normalizedProjectId
-    ? db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND source_key = ? LIMIT 1").get(`beads:${normalizedProjectId}`) as { source_key: string; path: string } | undefined
-    : db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC LIMIT 1").get() as { source_key: string; path: string } | undefined;
+  let row: { source_key: string; path: string } | undefined;
+  if (normalizedProjectId) {
+    row = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND source_key = ? LIMIT 1").get(`beads:${normalizedProjectId}`) as { source_key: string; path: string } | undefined;
+    if (!row) {
+      const candidates = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC").all() as Array<{ source_key: string; path: string }>;
+      row = candidates.find((candidate) => {
+        const sourceProjectId = candidate.source_key.replace(/^beads:/, "");
+        return sourceProjectId === normalizedProjectId || projectNameFromBeadsPath(candidate.path) === normalizedProjectId;
+      });
+    }
+  } else {
+    row = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC LIMIT 1").get() as { source_key: string; path: string } | undefined;
+  }
   if (!row) return null;
   const sourceProjectId = row.source_key.replace(/^beads:/, "");
   return { sourceKey: row.source_key, projectId: sourceProjectId, path: row.path };
+}
+
+function projectNameFromBeadsPath(path: string): string {
+  return basename(path) === ".beads" ? basename(dirname(path)) : basename(path);
 }
 
 function readXtrmIssues(db: Database, projectId: string, includeClosed: boolean): BeadIssue[] {
@@ -390,11 +405,24 @@ function readXtrmIssues(db: Database, projectId: string, includeClosed: boolean)
     WHERE ${where}
     ORDER BY priority ASC, created_at DESC, issue_id ASC
   `).all(projectId) as Array<Record<string, unknown>>;
+  const dependencyTargets = db.query(`
+    SELECT issue_id, title, state, issue_type
+    FROM substrate_issues
+    WHERE repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '')
+  `).all(projectId) as Array<Record<string, unknown>>;
+  const dependencyTargetIndex = new Map(dependencyTargets.map((row) => [String(row.issue_id), row] as const));
   const dependencies = db.query("SELECT issue_id, dep_issue_id, relation FROM substrate_dependencies WHERE repo_slug = ?").all(projectId) as Array<{ issue_id: string; dep_issue_id: string; relation: string }>;
   const depsByIssue = new Map<string, BeadDependency[]>();
   for (const dep of dependencies) {
     const list = depsByIssue.get(dep.issue_id) ?? [];
-    list.push({ id: dep.dep_issue_id, title: "", status: "open", dependency_type: dep.relation });
+    const target = dependencyTargetIndex.get(dep.dep_issue_id);
+    list.push({
+      id: dep.dep_issue_id,
+      title: target == null ? "" : String(target.title ?? ""),
+      status: target == null ? "open" : String(target.state ?? "open"),
+      issue_type: target == null ? undefined : String(target.issue_type ?? "task"),
+      dependency_type: dep.relation,
+    });
     depsByIssue.set(dep.issue_id, list);
   }
 
@@ -477,24 +505,47 @@ function buildGraph(project: BeadsProject, issues: BeadIssue[], specialists: Spe
   const issueMap = new Map(issues.map((issue) => [issue.id, issue]));
   const allEdges = issues.flatMap((issue) => issue.dependencies.map((dependency) => normalizeEdge(issue.id, dependency)).filter((edge): edge is GraphEdge => edge !== null));
   const supersededTargets = new Set(allEdges.filter((edge) => edge.type === "supersedes").map((edge) => edge.to));
+  const ghostNodes = new Map<string, GraphNode>();
+  for (const issue of issues) {
+    for (const dependency of issue.dependencies) {
+      if (issueMap.has(dependency.id) || ghostNodes.has(dependency.id)) continue;
+      ghostNodes.set(dependency.id, {
+        id: dependency.id,
+        title: dependency.title?.trim() || dependency.id,
+        type: normalizeNodeType(dependency.issue_type ?? "task"),
+        priority: 2,
+        status: normalizeStatus(dependency.status),
+        assignee: null,
+        closed_at: null,
+        superseded_by: null,
+      });
+    }
+  }
 
   const visibleIds = new Set<string>();
   for (const issue of issues) {
     if (includeClosed || issue.status !== "closed") visibleIds.add(issue.id);
   }
   for (const id of supersededTargets) visibleIds.add(id);
+  for (const id of ghostNodes.keys()) visibleIds.add(id);
 
   const edges = allEdges.filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to));
-  const nodes = [...visibleIds].map((id) => issueMap.get(id)).filter((issue): issue is BeadIssue => issue !== undefined).map((issue) => ({
-    id: issue.id,
-    title: issue.title,
-    type: normalizeNodeType(issue.issue_type),
-    priority: issue.priority as GraphNode["priority"],
-    status: normalizeStatus(issue.status),
-    assignee: issue.owner,
-    closed_at: issue.closed_at ?? null,
-    superseded_by: null,
-  }));
+  const nodes = [...visibleIds].map((id) => {
+    const issue = issueMap.get(id);
+    if (issue) {
+      return {
+        id: issue.id,
+        title: issue.title,
+        type: normalizeNodeType(issue.issue_type),
+        priority: issue.priority as GraphNode["priority"],
+        status: normalizeStatus(issue.status),
+        assignee: issue.owner,
+        closed_at: issue.closed_at ?? null,
+        superseded_by: null,
+      };
+    }
+    return ghostNodes.get(id) ?? null;
+  }).filter((node): node is GraphNode => node !== null);
   const supersededBy = new Map(edges.filter((edge) => edge.type === "supersedes").map((edge) => [edge.to, edge.from]));
   const specialistsOverlay = specialists.filter((job) => LIVE_STATUSES.has(job.status)).map(toSpecialist);
 
