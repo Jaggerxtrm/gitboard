@@ -131,4 +131,5 @@ the running Gitboard service on Tailscale remains stable.
 3. Audit app/materializer/API separation (`forge-benk.3`) using this inventory
    plus `docs/architecture/console-telemetry-materialization.md`.
 4. Prepare the `apps/console` scaffold gate (`forge-benk.4`) only after the
-   runtime and documentation drift is visible.
+   runtime and documentation drift is visible. Gate output:
+   `apps-console-scaffold-preflight.md`.
