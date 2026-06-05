@@ -13,7 +13,7 @@ import { BeadHeader } from "../specialists/BeadHeader.tsx";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
-import { useShellStore } from "../../stores/shell.ts";
+import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import { filterIssuesForFeed } from "./feedSearch.ts";
 
 export interface IssuePrLink {
@@ -55,18 +55,14 @@ export type FeedItem =
   | { kind: "issue"; issue: BeadIssue; depth: number; childCount: number; relation: "parent" | "epic" | "blocked" };
 
 export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, onIssueOpen, getAgent, projectId, prByIssueId, specialistByIssueId }: IssueFeedProps) {
-  const openSidebar = useShellStore((state) => state.openSidebar);
   const handleSpecialistOpen = (beadId: string, specialistJob: SpecialistOwnershipJob | null) => {
     if (!specialistJob) return;
-    const previous = useShellStore.getState().sidebar;
     logClientEvent("chip.click", { source: "feed_chip", beadId, jobId: specialistJob.jobId ?? null });
-    openSidebar({ beadId, jobId: specialistJob.jobId ?? undefined });
-    logClientEvent("chip.sidebar.dispatched", {
+    beadSideDrawer.open({ beadId, jobId: specialistJob.jobId, issue: issueById.get(beadId) ?? null });
+    logClientEvent("chip.inspector.dispatched", {
       source: "feed_chip",
       beadId,
       jobId: specialistJob.jobId ?? null,
-      swap: Boolean(previous.open && previous.beadId !== beadId),
-      prevSidebar: previous.open ? { beadId: previous.beadId, jobId: previous.jobId } : null,
     });
   };
   const parentRef = useRef<HTMLDivElement>(null);

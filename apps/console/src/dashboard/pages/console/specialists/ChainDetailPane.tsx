@@ -5,8 +5,8 @@ import { ResultMarkdown } from "../../../lib/markdown.tsx";
 import { substrateApi } from "../../../lib/substrate-api.ts";
 import type { ChainJob, ChainSummary } from "../../../hooks/useChains.ts";
 import { useChainDetail } from "../../../hooks/useChainDetail.ts";
-import { useShellStore } from "../../../stores/shell.ts";
 import type { BeadIssueDetail } from "../../../../types/beads.ts";
+import { beadSideDrawer } from "../../../hooks/useBeadSideDrawer.ts";
 import type { ChainIssueContext } from "./chainIssueContext.ts";
 import { RELATIONSHIP_LABEL } from "./chainIssueContext.ts";
 import { IssueContextChip } from "./IssueContextChip.tsx";
@@ -196,7 +196,7 @@ function EmptyState() {
 }
 
 function openBead(beadId: string): void {
-  useShellStore.getState().openSidebar({ beadId });
+  beadSideDrawer.open(beadId);
 }
 
 function JobBlock({ job }: { job: ChainJob }) {

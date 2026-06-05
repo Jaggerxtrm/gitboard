@@ -4441,10 +4441,46 @@ body:has(.shell-app) { background: #101010 !important; }
 }
 
 .bead-side-drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; }
-.bead-side-drawer { position: absolute; right: 0; top: 0; bottom: 0; width: min(50vw, 720px); background: var(--surface-primary); display: flex; flex-direction: column; transform: translateX(0); transition: transform 200ms ease-out; box-shadow: -12px 0 32px rgba(0,0,0,0.45); }
+.bead-side-drawer { position: absolute; right: 0; top: 0; bottom: 0; width: min(62vw, 860px); background: var(--surface-primary); display: flex; flex-direction: column; transform: translateX(0); transition: transform 200ms ease-out; box-shadow: -12px 0 32px rgba(0,0,0,0.45); }
 .bead-side-drawer-header { height: 40px; display:flex; align-items:center; justify-content:space-between; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); }
 .bead-side-drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
 .bead-side-drawer-footer { height: 40px; display:flex; align-items:center; justify-content:flex-end; padding: 0 12px; border-top: 1px solid var(--border-subtle); }
+.bead-side-drawer-headline { align-items: center; display: flex; gap: 8px; min-width: 0; }
+.bead-side-drawer-id { color: var(--text-secondary); flex: 0 0 auto; font-family: var(--font-mono); font-size: 11px; }
+.bead-side-drawer-title { color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bead-side-drawer-back,
+.bead-side-drawer-close { align-items: center; background: transparent; border: 0; color: var(--text-muted); cursor: pointer; display: inline-flex; height: 24px; justify-content: center; width: 24px; }
+.bead-side-drawer-back:hover,
+.bead-side-drawer-back:focus-visible,
+.bead-side-drawer-close:hover,
+.bead-side-drawer-close:focus-visible { background: var(--surface-secondary); color: var(--text-primary); outline: none; }
+.bead-inspector-tabs { border-bottom: 1px solid var(--border-subtle); display: flex; gap: 2px; margin: 10px 0 0; overflow-x: auto; padding-bottom: 1px; }
+.bead-inspector-tab { align-items: center; background: transparent; border: 0; color: var(--text-muted); cursor: pointer; display: inline-flex; flex: 0 0 auto; font: inherit; font-size: 11px; gap: 5px; min-height: 28px; padding: 0 8px; }
+.bead-inspector-tab b { color: var(--text-secondary); font-family: var(--font-mono); font-size: 10px; font-weight: 500; }
+.bead-inspector-tab:hover,
+.bead-inspector-tab:focus-visible { background: var(--surface-secondary); color: var(--text-primary); outline: none; }
+.bead-inspector-tab.is-active { color: var(--text-primary); box-shadow: inset 0 -1px 0 var(--accent); }
+.bead-inspector-panel { padding-top: 12px; }
+.bead-inspector-stack { display: grid; gap: 12px; }
+.bead-inspector-section { display: grid; gap: 8px; }
+.bead-inspector-link-list { display: grid; gap: 6px; }
+.bead-inspector-link,
+.bead-inspector-evidence-row,
+.bead-inspector-memory { background: color-mix(in srgb, var(--surface-2) 72%, var(--surface-primary)); border: 1px solid var(--border-subtle); color: inherit; display: grid; gap: 4px; min-width: 0; padding: 8px 9px; text-align: left; }
+.bead-inspector-link { cursor: pointer; }
+.bead-inspector-link:hover,
+.bead-inspector-link:focus-visible { border-color: var(--border-default); outline: none; }
+.bead-inspector-link-id { color: var(--text-secondary); font-family: var(--font-mono); font-size: 10px; }
+.bead-inspector-link-title { color: var(--text-primary); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bead-inspector-link-meta { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.bead-inspector-evidence-row p,
+.bead-inspector-memory p { color: var(--text-secondary); font-size: 11.5px; line-height: 1.45; margin: 0; }
+.bead-inspector-empty { border: 1px solid var(--border-subtle); color: var(--text-muted); display: grid; gap: 5px; padding: 12px; }
+.bead-inspector-empty b { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.bead-inspector-empty span { font-size: 11px; line-height: 1.45; }
+.spec-issue-chip { border: 0; cursor: pointer; font: inherit; text-align: left; }
+.spec-issue-chip:hover,
+.spec-issue-chip:focus-visible { outline: 1px solid var(--border-default); outline-offset: -1px; }
 @media (max-width: 767px) { .bead-side-drawer { width: 100vw; } }
 .bottom-drawer { background: var(--surface-primary); display: flex; flex-direction: column; flex-shrink: 0; min-height: 120px; min-width: 0; z-index: 40; }
 .bottom-drawer-body { flex: 1; min-height: 0; overflow: auto; }
