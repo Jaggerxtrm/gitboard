@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { emit, makeLogEntry } from "../../core/logger.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
+import { DoltClient } from "../../core/dolt-client.ts";
 import { formatSourceDisplayPath } from "./sources-policy.ts";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../../types/beads.ts";
 
@@ -23,7 +26,7 @@ export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
   router.get("/projects/:projectId/interactions", async (c) => c.json({ interactions: await readInteractions(xtrmDb, c.req.param("projectId"), c.req.query("issue_id") ?? undefined) }));
   router.get("/projects/:projectId/runtime-graph", (c) => c.json(readRuntimeGraph(xtrmDb, c.req.param("projectId"))));
   router.get("/projects/:projectId/stats", (c) => c.json({ stats: readStats(xtrmDb, c.req.param("projectId")) }));
-  router.get("/projects/:projectId/connection", (c) => c.json(readConnection(xtrmDb, c.req.param("projectId"))));
+  router.get("/projects/:projectId/connection", async (c) => c.json(await readConnection(xtrmDb, c.req.param("projectId"))));
 
   return router;
 }
@@ -31,17 +34,26 @@ export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
 function readProjects(db?: Database | null): BeadsProject[] {
   if (!db) return [];
   const rows = db.query("SELECT source_key, path, last_seen_at FROM sources WHERE kind = 'beads' ORDER BY source_key ASC").all() as Array<{ source_key: string; path: string; last_seen_at: string | null }>;
-  return rows.map((row) => ({
-    id: row.source_key.replace(/^beads:/, ""),
-    name: row.path.split("/").filter(Boolean).at(-2) ?? row.source_key,
-    path: formatSourceDisplayPath(row.path),
-    beadsPath: formatSourceDisplayPath(row.path),
-    source: "unknown",
-    status: "active",
-    lastScanned: row.last_seen_at ?? new Date(0).toISOString(),
-    issueCount: countIssues(db, row.source_key.replace(/^beads:/, "")),
-    sourceHealth: [{ kind: "unknown", state: "fresh" }],
-  }));
+  return rows.map((row) => {
+    const id = row.source_key.replace(/^beads:/, "");
+    const facts = readBeadsSourceFacts(row.path);
+    const state = readMaterializationState(db, row.source_key);
+    const healthState = state?.last_status === "error" ? "degraded" : facts.doltPort ? "fresh" : "stale";
+    return {
+      id,
+      name: facts.projectName,
+      path: formatSourceDisplayPath(facts.repoPath),
+      beadsPath: formatSourceDisplayPath(row.path),
+      doltPort: facts.doltPort,
+      doltDatabase: facts.doltDatabase,
+      source: facts.doltPort ? "dolt" : "jsonl",
+      sourcePriority: facts.doltPort ? ["dolt", "jsonl"] : ["jsonl"],
+      status: facts.doltPort ? "active" : "idle",
+      lastScanned: row.last_seen_at ?? facts.jsonlUpdatedAt ?? new Date(0).toISOString(),
+      issueCount: countIssues(db, id),
+      sourceHealth: [{ kind: facts.doltPort ? "dolt" : "jsonl", state: healthState, detail: state?.last_error ?? undefined }],
+    } satisfies BeadsProject;
+  });
 }
 
 function readIssues(db: Database | null | undefined, projectId: string, filters: { status?: string[]; priority?: number[]; search?: string; limit?: number }): BeadIssue[] {
@@ -50,7 +62,52 @@ function readIssues(db: Database | null | undefined, projectId: string, filters:
 }
 
 function readClosedIssues(db: Database | null | undefined, projectId: string, limit: number): BeadIssue[] {
-  return queryIssues(db, projectId).filter((issue) => issue.status === "closed").slice(0, limit);
+  if (!db) return [];
+  logSchemaColumnsOnce(db);
+  const rows = db.query(`
+    SELECT issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at
+    FROM substrate_issues
+    WHERE repo_slug = ?
+      AND state = 'closed'
+      AND (deleted_at IS NULL OR deleted_at = '')
+    ORDER BY COALESCE(closed_at, updated_at, created_at) DESC, issue_id ASC
+    LIMIT ?
+  `).all(projectId, limit) as Array<Record<string, unknown>>;
+  const issueIndex = new Map(rows.map((row) => [String(row.issue_id), row] as const));
+  const dependencies = db.query("SELECT issue_id, dep_issue_id, relation FROM substrate_dependencies WHERE repo_slug = ?").all(projectId) as Array<{ issue_id: string; dep_issue_id: string; relation: string }>;
+  const depsByIssue = new Map<string, BeadDependency[]>();
+  for (const dep of dependencies) {
+    const list = depsByIssue.get(dep.issue_id) ?? [];
+    const target = issueIndex.get(dep.dep_issue_id);
+    list.push({
+      id: dep.dep_issue_id,
+      title: target == null ? "" : String(target.title ?? ""),
+      status: target == null ? "open" : String(target.state ?? "open"),
+      issue_type: target == null ? undefined : String(target.issue_type ?? "task"),
+      dependency_type: dep.relation,
+    });
+    depsByIssue.set(dep.issue_id, list);
+  }
+  return rows.map((row) => ({
+    id: String(row.issue_id),
+    title: String(row.title ?? ""),
+    description: row.body == null ? null : String(row.body),
+    notes: row.notes == null ? null : String(row.notes),
+    status: String(row.state ?? "open"),
+    priority: Number(row.priority ?? 2),
+    issue_type: String(row.issue_type ?? "task"),
+    owner: row.owner == null ? null : String(row.owner),
+    created_at: String(row.created_at ?? new Date(0).toISOString()),
+    created_by: null,
+    updated_at: String(row.updated_at ?? new Date(0).toISOString()),
+    closed_at: row.closed_at == null ? (row.deleted_at == null ? undefined : String(row.deleted_at)) : String(row.closed_at),
+    close_reason: row.close_reason == null ? undefined : String(row.close_reason),
+    project_id: projectId,
+    dependencies: depsByIssue.get(String(row.issue_id)) ?? [],
+    parent_id: row.parent_id == null ? undefined : String(row.parent_id),
+    related_ids: parseJsonArray(row.related_ids),
+    labels: parseJsonArray(row.labels),
+  }));
 }
 
 function readIssueDetail(db: Database | null | undefined, projectId: string, issueId: string): BeadIssueDetail | null {
@@ -94,7 +151,34 @@ function readStats(db: Database | null | undefined, projectId: string) {
   }, { total: 0, open: 0, in_progress: 0, blocked: 0, closed: 0, by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 }, by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 } });
 }
 
-function readConnection(_db: Database | null | undefined, _projectId: string) { return { source: "sqlite", status: "substrate_connected", degraded: false, message: "xtrm.sqlite connected" }; }
+async function readConnection(db: Database | null | undefined, projectId: string): Promise<Record<string, unknown>> {
+  if (!db) return { source: "none", status: "error", degraded: true, error: "xtrm.sqlite unavailable" };
+  const row = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND source_key = ?").get(`beads:${projectId}`) as { source_key: string; path: string } | undefined;
+  if (!row) return { source: "none", status: "not_found", degraded: true, error: "Project not found" };
+  const facts = readBeadsSourceFacts(row.path);
+  const state = readMaterializationState(db, row.source_key);
+  const base = {
+    port: facts.doltPort,
+    database: facts.doltDatabase,
+    pid: facts.doltPid,
+    jsonl_updated_at: facts.jsonlUpdatedAt,
+    last_success_at: state?.last_success_at ?? null,
+    last_error: state?.last_error ?? null,
+  };
+  if (!facts.doltPort) {
+    return { ...base, source: "jsonl", status: "jsonl_fallback", degraded: true, note: "No Dolt port configured; reading materialized JSONL backup." };
+  }
+  const client = new DoltClient({ host: process.env.DOLT_HOST ?? (process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1"), port: facts.doltPort, database: facts.doltDatabase ?? "dolt" });
+  try {
+    await client.connect();
+    return { ...base, source: "dolt", status: "dolt_connected", degraded: state?.last_status === "error", message: state?.last_error ?? `Dolt connected:${facts.doltPort}` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ...base, source: "jsonl", status: facts.doltPid ? "dolt_unreachable" : "dolt_process_dead", degraded: true, error: state?.last_error ?? message, note: "Dolt unavailable; using materialized/JSONL fallback." };
+  } finally {
+    await client.disconnect().catch(() => undefined);
+  }
+}
 
 function readRuntimeGraph(db: Database | null | undefined, projectId: string) {
   if (!db) return { nodes: [], edges: [] };
@@ -139,6 +223,99 @@ function getBeadsPath(db: Database | null | undefined, projectId: string): strin
   if (!db) return null;
   const row = db.query("SELECT path FROM sources WHERE kind = 'beads' AND source_key = ?").get(`beads:${projectId}`) as { path: string } | undefined;
   return row?.path ?? null;
+}
+
+type BeadsSourceFacts = {
+  repoPath: string;
+  projectName: string;
+  doltPort?: number;
+  doltDatabase?: string;
+  doltPid?: number;
+  jsonlUpdatedAt?: string;
+};
+
+function readBeadsSourceFacts(beadsPath: string): BeadsSourceFacts {
+  const repoPath = beadsPath.endsWith("/.beads") ? dirname(beadsPath) : beadsPath;
+  const projectName = repoPath.split("/").filter(Boolean).at(-1) ?? beadsPath;
+  const metadata = readJsonFile(join(beadsPath, "metadata.json"));
+  const config = readTextFile(join(beadsPath, "config.yaml")) ?? "";
+  const sharedServerEnabled = /dolt\.shared-server:\s*true|shared-server:\s*true/.test(config);
+  const configuredPort = numberFromMatch(config.match(/port:\s*(\d+)/));
+  const sharedPort = sharedServerEnabled ? readSharedServerPort() : undefined;
+  const doltPort = sharedPort ?? (sharedServerEnabled ? undefined : configuredPort);
+  const doltDatabase = stringFromMatch(config.match(/dolt_database:\s*(\S+)/)) ?? stringFromRecord(metadata, "dolt_database");
+  return {
+    repoPath,
+    projectName,
+    doltPort,
+    doltDatabase,
+    doltPid: readDoltPid(beadsPath),
+    jsonlUpdatedAt: mtimeIso(join(beadsPath, "issues.jsonl")),
+  };
+}
+
+function readMaterializationState(db: Database, sourceKey: string): { last_status: string | null; last_success_at: string | null; last_error: string | null } | null {
+  return db.query("SELECT last_status, last_success_at, last_error FROM materialization_state WHERE source_key = ?").get(sourceKey) as { last_status: string | null; last_success_at: string | null; last_error: string | null } | null;
+}
+
+function readSharedServerPort(): number | undefined {
+  const path = process.env.HOME ? join(process.env.HOME, ".beads/shared-server/dolt-server.port") : null;
+  if (!path) return undefined;
+  const value = Number(readTextFile(path)?.trim());
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function readDoltPid(beadsPath: string): number | undefined {
+  const candidates = [
+    join(beadsPath, "dolt-server.pid"),
+    process.env.HOME ? join(process.env.HOME, ".beads/shared-server/dolt-server.pid") : "",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const value = Number(readTextFile(candidate)?.trim());
+    if (Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function readTextFile(path: string): string | null {
+  try {
+    return existsSync(path) ? readFileSync(path, "utf8") : null;
+  } catch {
+    return null;
+  }
+}
+
+function readJsonFile(path: string): Record<string, unknown> | null {
+  const text = readTextFile(path);
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function mtimeIso(path: string): string | undefined {
+  try {
+    return statSync(path).mtime.toISOString();
+  } catch {
+    return undefined;
+  }
+}
+
+function numberFromMatch(match: RegExpMatchArray | null): number | undefined {
+  const value = match?.[1] == null ? NaN : Number(match[1]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function stringFromMatch(match: RegExpMatchArray | null): string | undefined {
+  return match?.[1] || undefined;
+}
+
+function stringFromRecord(record: Record<string, unknown> | null, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function logEmptyOrMissingProjectData(seen: Set<string>, event: string, projectId: string, beadsPath: string): void {

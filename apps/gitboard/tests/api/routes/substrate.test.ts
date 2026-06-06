@@ -81,6 +81,27 @@ describe("substrate projects", () => {
     db.close();
   });
 
+  it("orders closed issues by most recent close timestamp before applying the limit", async () => {
+    const db = createXtrmDatabase(dbPath);
+    db.exec(`
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at, closed_at)
+      VALUES
+        ('demo', 'old-p0', 'Old P0', 'closed', 'task', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+        ('demo', 'new-p4', 'New P4', 'closed', 'task', 4, '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z', '2026-06-01T00:00:00Z'),
+        ('demo', 'middle-p1', 'Middle P1', 'closed', 'task', 1, '2026-01-03T00:00:00Z', '2026-01-03T00:00:00Z', '2026-05-01T00:00:00Z'),
+        ('demo', 'open-new', 'Open New', 'open', 'task', 0, '2026-06-02T00:00:00Z', '2026-06-02T00:00:00Z', NULL);
+    `);
+    const app = createSubstrateRouter(db);
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/issues/closed?limit=2", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { issues: Array<{ id: string }> };
+
+    expect(body.issues.map((issue) => issue.id)).toEqual(["new-p4", "middle-p1"]);
+
+    db.close();
+  });
+
   it("serves a typed Beads runtime graph for chain molecules and steps", async () => {
     const db = createXtrmDatabase(dbPath);
     db.exec(`

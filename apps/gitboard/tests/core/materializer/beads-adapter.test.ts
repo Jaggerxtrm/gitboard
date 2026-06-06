@@ -95,9 +95,9 @@ describe("BeadsAdapter", () => {
 
     await materializer.runOnce("beads:proj-1");
 
-    const issues = xtrmDb.query("SELECT issue_id, runtime_kind, formula_name, contract_kind, contract_xml, metadata_json FROM substrate_issues WHERE repo_slug = ? ORDER BY issue_id").all("proj-1") as Array<{ issue_id: string; runtime_kind: string | null; formula_name: string | null; contract_kind: string | null; contract_xml: string | null; metadata_json: string | null }>;
+    const issues = xtrmDb.query("SELECT issue_id, parent_id, runtime_kind, formula_name, contract_kind, contract_xml, metadata_json FROM substrate_issues WHERE repo_slug = ? ORDER BY issue_id").all("proj-1") as Array<{ issue_id: string; parent_id: string | null; runtime_kind: string | null; formula_name: string | null; contract_kind: string | null; contract_xml: string | null; metadata_json: string | null }>;
     expect(issues).toEqual([
-      expect.objectContaining({ issue_id: "chain-1", runtime_kind: "chain_molecule", formula_name: "review-fix", contract_kind: "change-contract", contract_xml: rootContract }),
+      expect.objectContaining({ issue_id: "chain-1", parent_id: "epic-1", runtime_kind: "chain_molecule", formula_name: "review-fix", contract_kind: "change-contract", contract_xml: rootContract }),
       expect.objectContaining({ issue_id: "chain-1.1", runtime_kind: "step", contract_kind: "step-contract", contract_xml: stepContract }),
       expect.objectContaining({ issue_id: "epic-1", runtime_kind: "organizational_epic" }),
     ]);

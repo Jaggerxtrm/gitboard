@@ -145,6 +145,7 @@ function normalizeIssue(projectId: string, issue: BeadIssue): MaterializedIssue 
   }
   const labels = Array.isArray(issue.labels) ? issue.labels : [];
   const contract = extractContract(issue.description);
+  const parentId = issue.parent_id ?? issue.dependencies.find((dependency) => dependency.dependency_type === "parent-child")?.id;
   return {
     repo_slug: projectId,
     issue_id: issue.id,
@@ -156,7 +157,7 @@ function normalizeIssue(projectId: string, issue: BeadIssue): MaterializedIssue 
     owner: normalizeText(issue.owner),
     labels: normalizeJson(labels),
     related_ids: normalizeJson(issue.related_ids),
-    parent_id: normalizeText(issue.parent_id),
+    parent_id: normalizeText(parentId),
     runtime_kind: deriveRuntimeKind(issue, labels),
     formula_name: normalizeText(issue.formula_name ?? findLabelValue(labels, "formula")),
     template_name: normalizeText(issue.template_name ?? findLabelValue(labels, "template")),
