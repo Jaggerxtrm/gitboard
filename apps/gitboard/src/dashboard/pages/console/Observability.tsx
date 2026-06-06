@@ -2,13 +2,26 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useObservabilitySummary } from "../../hooks/useObservabilitySummary.ts";
 import { ShellProviderNotice } from "../../components/console/ShellProviderNotice.tsx";
+import { substrateApi } from "../../lib/beads.ts";
 import type { ShellProviderStatus } from "../../../core/shell-provider-policy.ts";
+import type { BeadsConnectionStatus, BeadsProject } from "../../../types/beads.ts";
+
+type BeadsHealthRow = {
+  project: string;
+  source: string;
+  status: string;
+  port: string;
+  database: string;
+  jsonl: string;
+  reason: string;
+};
 
 export function Observability() {
   const [range, setRange] = useState<"7d" | "30d" | "all">("7d");
   const data = useObservabilitySummary(range);
   const tools = data?.toolUsage.totals ?? [];
   const [status, setStatus] = useState<ShellProviderStatus | null>(null);
+  const [beadsHealth, setBeadsHealth] = useState<BeadsHealthRow[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -17,6 +30,24 @@ export function Observability() {
       .then((payload: ShellProviderStatus) => setStatus(payload))
       .catch(() => setStatus(null));
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBeadsHealth() {
+      try {
+        const projects = await substrateApi.listProjects();
+        const rows = await Promise.all(projects.map(async (project) => {
+          const connection = await substrateApi.getConnection(project.id).catch(() => null);
+          return healthRow(project, connection);
+        }));
+        if (!cancelled) setBeadsHealth(rows);
+      } catch {
+        if (!cancelled) setBeadsHealth([]);
+      }
+    }
+    void loadBeadsHealth();
+    return () => { cancelled = true; };
   }, []);
 
   return (
@@ -29,6 +60,7 @@ export function Observability() {
       </div>
 
       <MetricTable title="1. Tokens" columns={["Specialist", "Input", "Output", "Cache create", "Cache read", "Total"]} rows={(data?.tokens.bySpecialist ?? []).map((row) => [row.specialist, row.input, row.output, row.cacheCreation, row.cacheRead, row.total])} />
+      <MetricTable title="Beads source health" columns={["Project", "Source", "Status", "Port", "Database", "JSONL", "Reason"]} rows={beadsHealth.map((row) => [row.project, row.source, row.status, row.port, row.database, row.jsonl, row.reason])} />
       <MetricTable title="2. Cache hit rate" columns={["Specialist", "Hit rate"]} rows={(data?.cacheHitRate.bySpecialist ?? []).map((row) => [row.specialist, pct(row.hitRate)])} />
       <MetricTable title="3. Per-specialist averages" columns={["Specialist", "Avg tokens", "Avg elapsed ms", "Avg turns", "Avg tools"]} rows={(data?.averages ?? []).map((row) => [row.specialist, row.avgTokens, row.avgElapsedMs, row.avgTurns, row.avgTools])} />
       <MetricTable title="4. Active runtime" columns={["Specialist", "ms"]} rows={(data?.activeRuntime.bySpecialist ?? []).map((row) => [row.specialist, row.ms])} />
@@ -68,6 +100,21 @@ function Cell({ value, header = false, width = 1 }: { value: string | number; he
 
 function pct(value: number) { return `${Math.round(value * 100)}%`; }
 function isNumeric(value: string | number) { return typeof value === "number" || /^\d/.test(String(value)); }
+
+function healthRow(project: BeadsProject, connection: BeadsConnectionStatus | null): BeadsHealthRow {
+  const firstHealth = project.sourceHealth?.[0];
+  const source = connection?.source ?? firstHealth?.kind ?? project.source ?? "unknown";
+  const status = connection?.status ?? firstHealth?.state ?? "unknown";
+  return {
+    project: project.name,
+    source,
+    status,
+    port: connection?.port == null ? (project.doltPort == null ? "none" : String(project.doltPort)) : String(connection.port),
+    database: connection?.database ?? project.doltDatabase ?? "unknown",
+    jsonl: project.lastScanned ?? "unknown",
+    reason: connection?.message ?? connection?.error ?? connection?.note ?? firstHealth?.detail ?? "",
+  };
+}
 
 const shellStyle: CSSProperties = { background: "var(--surface-primary)", color: "var(--text-primary)", fontFamily: "Inter, sans-serif" };
 const toggleWrapStyle: CSSProperties = { display: "flex", gap: 8, marginBottom: 12 };

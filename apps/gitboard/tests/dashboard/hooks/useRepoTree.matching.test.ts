@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { findBeadsSide, normalizeProjectKey } from "../../../src/dashboard/hooks/useRepoTree.ts";
 import type { BeadsProject } from "../../../src/types/beads.ts";
 
@@ -39,5 +41,12 @@ describe("useRepoTree beads matching", () => {
     const map = new Map([[exact.project.name, exact], [suffix.project.name, suffix]]);
 
     expect(findBeadsSide("mercury-market-data", map)?.project.name).toBe("mercury-market-data");
+  });
+
+  it("does not use steady-state interval polling", () => {
+    const source = readFileSync(join(process.cwd(), "src/dashboard/hooks/useRepoTree.ts"), "utf8");
+
+    expect(source).not.toContain("setInterval");
+    expect(source).not.toContain("REFRESH_MS");
   });
 });
