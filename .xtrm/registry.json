@@ -990,6 +990,26 @@
         "xt-merge/SKILL.md": {
           "hash": "3befa09563fed162193f62ff72811a5e113153659c15d85a9d3a31dd1276b2e2",
           "version": "0.8.2"
+        },
+        "agent-docs-maintainer/references/agents-template.md": {
+          "hash": "2f421eccf6d188b282a29b6773b1d3e33af30f9e579f3a9b938fda077856392b",
+          "version": "0.8.5"
+        },
+        "agent-docs-maintainer/references/audit-rules.md": {
+          "hash": "8c9892eee4e8a821f938171c129e45c98167fae8a09ea7da9622399662c73aaf",
+          "version": "0.8.5"
+        },
+        "agent-docs-maintainer/references/claude-template.md": {
+          "hash": "ff96e5af8e92d9ea858f75351722a5db10b08c7be0de8164473e69ea54f29e13",
+          "version": "0.8.5"
+        },
+        "agent-docs-maintainer/scripts/audit_agent_docs.py": {
+          "hash": "c6a29f33cde20e5ac14a326d01d9d7dff250f1dc2a40590b7de6889de01e1a44",
+          "version": "0.8.5"
+        },
+        "agent-docs-maintainer/SKILL.md": {
+          "hash": "2059e7c1a16a2c1f9c4bf7dbf8f93e0e8134d2bd03b8e48f7ec92aaa39f8ec0a",
+          "version": "0.8.5"
         }
       }
     },

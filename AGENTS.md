@@ -1,21 +1,50 @@
+# xtrm — Agent Guide
+
+## Project summary
+
+Bun monorepo for the **xtrm** agent orchestration + GitHub-activity stack.
+
+- `apps/gitboard` (`@xtrm/gitboard`) — primary backend / materializer; serves the dashboard built with Vite.
+- `apps/console` — `console` frontend (served at `/console`).
+- `packages/{core, api-client, html-preview, ui}` — shared TypeScript libs.
+
+Runtime: Bun + TypeScript; tests via Vitest. Deploys as a `gitboard.service` systemd user unit.
+
+## Project map
+
+- `apps/gitboard/src/` — API routes, materializer, core domain logic
+- `apps/console/` — frontend UI
+- `packages/core/` — shared materializer / domain primitives
+- `packages/api-client/` — typed client for `/api/*`
+- `.xtrm/` — agent workflow config (instructions, hooks, MCP, settings)
+- `XTRM-GUIDE.md` — full xtrm workflow reference
+
+## Essential build / test
+
+- `bun install` — install workspace deps
+- `bun run build` — full build (packages then apps)
+- `bun run --filter @xtrm/gitboard test` — gitboard tests (Vitest)
+- `bun run --filter @xtrm/gitboard lint` — gitboard typecheck
+
+---
+
 <!-- xtrm:start -->
 # XTRM Agent Workflow
 
 > Full reference: [XTRM-GUIDE.md](XTRM-GUIDE.md)
-> Run `bd prime` at session start (or after context reset) for live beads workflow context.
+> Run `bd prime` at session start (or after a context reset) for live beads workflow context.
+> For command syntax, prefer `--help` (e.g. `bd --help`, `bv --help`, `xt --help`, `sp --help`).
 
 ## Session Start
 
 1. `bd prime` — load workflow context and active claims
-2. `bd memories <keyword>` — retrieve memories relevant to today's task
-3. `bd recall <key>` — retrieve a specific memory by key if needed
-4. `bv --robot-triage` — graph-aware triage: ranked picks, unblock targets, project health
-5. `bd update <id> --claim` — claim before any file edit
+2. `bv --robot-triage` — ranked picks (or `bd ready` for raw queue)
+3. `bd update <id> --claim` — claim before any file edit
 
 ## Execution Interaction Policy
 
 - Proceed by default on standard implementation tasks once scope is clear.
-- Do **not** ask repetitive “Proceed? Yes/No” confirmations.
+- Do **not** ask repetitive "Proceed?" confirmations.
 - Ask for confirmation only when actions are destructive, irreversible, or high-risk (e.g. `rm`, history rewrite, mass deletes, credential rotation, prod-impacting ops).
 - Prefer concise clarifying questions only when requirements are genuinely ambiguous.
 
@@ -26,128 +55,51 @@
 | **Edit** | Write/Edit without active claim | `bd update <id> --claim` |
 | **Commit** | `git commit` while claim is open | `bd close <id>` first, then commit |
 | **Stop** | Session end with unclosed claim | `bd close <id>` |
-| **Memory** | `bd close <id>` without issue ack | First run `bd remember "<insight>"` (or decide nothing novel), then `bd kv set "memory-acked:<id>" "saved:<key>"` or `"nothing novel:<reason>"`, then retry `bd close <id> --reason="..."` |
+| **Memory** | `bd close <id>` without issue ack | `bd remember "<insight>"` (or decide nothing novel), then `bd kv set "memory-acked:<id>" "saved:<key>"` (or `"nothing novel:<reason>"`), then retry `bd close <id> --reason="..."` |
 
-## bd Command Reference
+## Essential commands
 
-```bash
-# Work discovery
-bd ready                               # Unblocked open issues
-bd show <id>                           # Full detail + deps + blockers
-bd list --status=in_progress           # Your active claims
-bd query "status=in_progress AND assignee=me"  # Complex filter
-bd search <text>                       # Full-text search across issues
+Tiny surface — for full syntax use `--help`.
 
-# Claiming & updating
-bd update <id> --claim                 # Claim (sets you as owner, status→in_progress)
-bd update <id> --notes "..."           # Append notes inline
-bd update <id> --status=blocked        # Mark blocked
-bd update                              # Update last-touched issue (no ID needed)
+- **Work**: `bd ready`, `bd list --status=in_progress`, `bd show <id>`, `bd update <id> --claim`, `bd close <id> --reason="…"`
+- **Triage**: `bv --robot-triage` (use only `--robot-*` flags — bare `bv` opens a TUI that blocks the session)
+- **Memory**: `bd remember "<insight>"`, `bd memories <kw>`, `bd recall <key>`
+- **Worktrees**: `xt claude` / `xt pi` (new session), `xt end` (commit / push / PR / cleanup)
 
-# Creating
-bd create --title="..." --description="..." --type=task --priority=2
-# --deps "discovered-from:<parent-id>"  link follow-ups to source
-# priority: 0=critical  1=high  2=medium  3=low  4=backlog
-# types: task | bug | feature | epic | chore | decision
+## Git Workflow
 
-# Closing
-# Memory gate: ack per issue before close
-#   bd kv set "memory-acked:<id>" "saved:<key>"  OR  "nothing novel:<reason>"
-bd close <id>                          # Close issue (blocked until memory-acked:<id> exists)
-bd close <id> --reason="Done: ..."     # Close with context
-bd close <id1> <id2> <id3>            # Batch close (each id needs its own memory ack)
-
-# Dependencies
-bd dep add <issue> <depends-on>        # issue depends on depends-on (depends-on blocks issue)
-bd dep <blocker> --blocks <blocked>    # shorthand: blocker blocks blocked
-bd dep relate <a> <b>                  # non-blocking "relates to" link
-bd dep tree <id>                       # visualise dependency tree
-bd blocked                             # show all currently blocked issues
-
-# Persistent memory
-bd remember "<insight>"                # Store across sessions (project-scoped)
-bd memories <keyword>                  # Search stored memories
-bd recall <key>                        # Retrieve full memory by key
-bd forget <key>                        # Remove a memory
-
-# Health & pre-flight
-bd stats                               # Open/closed/blocked counts
-bd preflight --check                   # Pre-PR readiness (lint, tests, beads)
-bd doctor                              # Diagnose installation issues
-```
-
-## Git Workflow (strict: one branch per issue)
+Strict: one branch per issue.
 
 ```bash
-git checkout -b feature/<issue-id>-<slug>   # or fix/... chore/...
-bd update <id> --claim                       # claim before any edit
-# ... write code ...
-bd close <id> --reason="..."                 # closes issue
-xt end                                       # push, PR, merge, worktree cleanup
+git checkout -b feature/<issue-id>-<slug>
+bd update <id> --claim
+# ... edit ...
+bd close <id> --reason="..."
+xt end
 ```
 
-**Never** continue new work on a previously used branch.
+Never continue new work on a previously-shipped branch.
 
-## Quality Gates (automatic)
+## Quality Gates (automatic on every edit, via PostToolUse extension)
 
-Run on every file edit via PostToolUse extension:
-- **TypeScript/JS**: ESLint + tsc
-- **Python**: ruff + mypy
+- TS/JS: ESLint + tsc
+- Python: ruff + mypy
 
-Gate output appears as extension context. Fix failures before proceeding — do not commit with lint errors.
+Fix failures before committing.
 
-## bv — Graph-Aware Triage
+## Skill / workflow routing
 
-bv is a graph-aware triage engine for the beads issue board. Use it instead of `bd ready` when you need ranked picks, dependency-aware scheduling, or project health signals.
+| Need | Use |
+|------|-----|
+| xtrm / beads workflow | `/using-xtrm`, `bd --help`, `xt --help` |
+| Specialist orchestration | latest `/using-specialists-*`, prefer `/using-specialists-v3`; `sp --help` |
+| Service-scoped tasks | `/scope`, `/using-service-skills` |
+| Planning / tests / docs | `/planning`, `/test-planning`, `/sync-docs` |
 
-> **CRITICAL: Use ONLY `--robot-*` flags. Bare `bv` launches an interactive TUI that blocks your session.**
+## Runtime notes
 
-```bash
-bv --robot-triage             # THE entry point — ranked picks, quick wins, blockers, health
-bv --robot-next               # Single top pick + claim command (minimal output)
-bv --robot-triage --format toon  # Token-optimized output for lower context usage
-```
-
-**Scope boundary:** bv = *what to work on*. `bd` = creating, claiming, closing issues.
-
-### Planning & Analysis
-
-| Command | Returns |
-|---------|---------|
-| `--robot-plan` | Parallel execution tracks with unblocks lists |
-| `--robot-priority` | Priority misalignment detection |
-| `--robot-insights` | Full graph metrics: PageRank, betweenness, HITS, eigenvector, critical path, cycles |
-| `--robot-forecast <id\|all>` | ETA predictions with dependency-aware scheduling |
-| `--robot-alerts` | Stale issues, blocking cascades, priority mismatches |
-| `--robot-diff --diff-since <ref>` | Changes since ref: new/closed/modified, cycles introduced/resolved |
-
-### Scoping & Filtering
-
-```bash
-bv --robot-plan --label backend        # Scope to label's subgraph
-bv --recipe actionable --robot-plan    # Pre-filter: ready to work (no blockers)
-bv --recipe high-impact --robot-triage # Pre-filter: top PageRank scores
-bv --robot-triage --robot-triage-by-track  # Group by parallel work streams
-```
-
-### Understanding Output
-
-- `data_hash` — fingerprint of beads state (verify consistency across calls)
-- Phase 1 (instant): degree, topo sort, density
-- Phase 2 (async, 500ms): PageRank, betweenness, HITS, cycles — check `status` flags
-
-```bash
-bv --robot-triage | jq '.quick_ref'              # At-a-glance summary
-bv --robot-triage | jq '.recommendations[0]'     # Top recommendation
-bv --robot-plan | jq '.plan.summary.highest_impact'
-bv --robot-insights | jq '.Cycles'               # Circular deps — must fix
-```
-
-## Worktree Sessions
-
-- `xt claude` — launch Claude Code in a sandboxed worktree
-- `xt pi` — launch Pi in a sandboxed worktree
-- `xt end` — close session: commit / push / PR / cleanup
+- Pi: use the process extension for long-running commands.
+- Generic agents: do not assume Claude-only tools; use whatever code-navigation tools the runtime provides.
 <!-- xtrm:end -->
 
 <!-- gitnexus:start -->
@@ -159,37 +111,26 @@ This project is indexed by GitNexus as **gitboard** (6589 symbols, 13452 relatio
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- **MUST run impact analysis before editing any symbol.** Run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report blast radius (callers, affected processes, risk) before modifying any function, class, or method.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify scope.
+- **MUST warn the user** on HIGH or CRITICAL risk before proceeding.
+- Prefer `gitnexus_query({query})` over grep for unfamiliar code; `gitnexus_context({name})` for symbol-level context.
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- NEVER edit symbols without first running `gitnexus_impact`.
+- NEVER ignore HIGH or CRITICAL risk warnings.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename`.
+- NEVER commit without running `gitnexus_detect_changes()`.
 
 ## Resources
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/gitboard/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/gitboard/clusters` | All functional areas |
-| `gitnexus://repo/gitboard/processes` | All execution flows |
-| `gitnexus://repo/gitboard/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/gitboard/context` | Codebase overview + index freshness |
+| `gitnexus://repo/gitboard/clusters` | Functional areas |
+| `gitnexus://repo/gitboard/processes` | Execution flows |
+| `gitnexus://repo/gitboard/process/{name}` | Step-by-step trace |
 
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
+For task-specific GitNexus workflows, load the matching `/gitnexus-*` skill.
 <!-- gitnexus:end -->
