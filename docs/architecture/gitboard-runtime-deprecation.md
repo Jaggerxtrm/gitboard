@@ -48,7 +48,7 @@ lifecycle, and GitHub adapter slices move.
 | `xtrm-state-schema` | Core-owned as of `forge-6oae.2` | `@xtrm/core/state/database` | `apps/gitboard/src/core/xtrm-store.ts` re-exports core schema API | Existing schema/materializer/API tests and direct Bun DB probe passed |
 | `runtime-host` | Core contract defined as of `forge-6oae.3` | `@xtrm/core/runtime` | `apps/gitboard/src/api/server.ts` still mounts routes and starts watchers | Host descriptor tests, route tests, typecheck, and local staging smoke passed |
 | `materializer-runtime` | Core-owned as of `forge-6oae.4` | `@xtrm/core/materializer` | `apps/gitboard/src/core/materializer/index.ts` injects gitboard logger and observability epoch hooks | Core materializer tests, app materializer tests, typecheck/build, and staging smoke passed |
-| `console-read-models` | Pending | `@xtrm/core/state` | App routes must remain HTTP DTO adapters | Routes are HTTP DTO adapters over core read-model services |
+| `console-read-models` | Feed rollup core-owned as of `forge-6oae.5`; substrate, specialists, graph, and source-health query code still pending | `@xtrm/core/state` | `apps/gitboard/src/api/routes/feed.ts` is an HTTP adapter over `readFeedPage`; other app routes still own their current SQL/query wrappers | Feed route/API parity, core feed service tests, typecheck/build, and staging smoke passed |
 | `source-lifecycle` | Pending | `@xtrm/core/runtime` | App supplies env/config only | Core owns discovery and health services; app supplies env/config |
 | `github-adapter` | Pending | `@xtrm/core/github` | App wires route/startup only | Core owns durable GitHub adapter state; app wires route/startup |
 
@@ -60,6 +60,7 @@ lifecycle, and GitHub adapter slices move.
 | `forge-6oae.2` | `xtrm-state-schema` | Core package lint/build, app schema/materializer/API tests, direct Bun DB probe for 17 tables, diff check | `bun:sqlite` remains a Bun-only import, exposed through explicit `@xtrm/core/state/database` subpath |
 | `forge-6oae.3` | `runtime-host` | Core host tests, app route tests, gitboard typecheck, package build, staging smoke on port 3099 with zero materializer/request errors | `createApp` still owns route mounting and watcher startup until later slices |
 | `forge-6oae.4` | `materializer-runtime` | Core materializer export tests, gitboard materializer/adapter tests, package build, gitboard typecheck, staging smoke on port 3099 with materializer/log filters | Beads and observability adapters remain app-owned until source/read-model extraction beads |
+| `forge-6oae.5` | `feed.rollups` read model | Core feed read-model tests, `/api/feed` route parity tests, API gate suite, package build, gitboard typecheck, staging smoke on port 3099, diff check, GitNexus detect-changes | Substrate, Specialists, graph, and source-health read models still need their own core services; `/api/feed` keeps reading bridge tables until daemon read models are live |
 
 ## Non-Negotiables
 

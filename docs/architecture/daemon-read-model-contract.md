@@ -15,7 +15,7 @@ The typed source of truth for this contract is
 |---|---|---|
 | `substrate.issue-graph` | `/api/substrate/projects*` | Native issue and edge state, currently bridged by `substrate_*` tables |
 | `specialists.activity-evidence` | `/api/specialists/*` | Native specialist job/activity/evidence state, currently bridged by `specialist_*` plus forensic/evidence rows |
-| `feed.rollups` | `/api/feed` | Derived rollups over native domain events; raw envelopes stay behind drilldown pointers |
+| `feed.rollups` | `/api/feed` | Core-owned bridge read model via `@xtrm/core/state` `readFeedPage`; future daemon source is derived rollups over native domain events; raw envelopes stay behind drilldown pointers |
 | `graph.console-joins` | `/api/console/graph` | Derived graph projection joining issues, edges, and specialist activity |
 | `source-health.freshness` | `/api/sources`, connection, graph, specialists health | Native source freshness with degraded-but-readable semantics |
 
@@ -51,3 +51,9 @@ compatible while those surfaces are retained.
 
 GitHub poller/store tables remain durable external adapter state and are not
 part of Beads/Specialists bridge retirement.
+
+## Current State
+
+| Contract | Core owner | App wrapper | Bridge state still retained |
+|---|---|---|---|
+| `feed.rollups` | `packages/core/src/state/feed-read-model.ts` owns row selection, severity/redaction normalization, drilldown pointers, and opaque cursor encoding by `(t_unix_ms, seq, id)` | `apps/gitboard/src/api/routes/feed.ts` parses HTTP query parameters and returns the existing `{ rows, cursor }` DTO | `xtrm_forensic_events`, `xtrm_evidence_refs`, `substrate_issues`, and `github_events` remain the bridge/durable adapter inputs until daemon-native rollups are served |
