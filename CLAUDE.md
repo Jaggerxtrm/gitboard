@@ -111,7 +111,7 @@ Fix failures before committing.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **gitboard** (6589 symbols, 13452 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **gitboard** (9645 symbols, 18754 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -130,7 +130,7 @@ This project is indexed by GitNexus as **gitboard** (6589 symbols, 13452 relatio
 - NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
 - NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
 
-## Resources & CLI
+## Resources
 
 | Resource | Use for |
 |----------|---------|
@@ -139,5 +139,15 @@ This project is indexed by GitNexus as **gitboard** (6589 symbols, 13452 relatio
 | `gitnexus://repo/gitboard/processes` | All execution flows |
 | `gitnexus://repo/gitboard/process/{name}` | Step-by-step execution trace |
 
-For task-specific workflows (exploring, impact analysis, debugging, refactoring), load the matching `/gitnexus-*` skill rather than reading per-skill SKILL.md paths from here.
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
 <!-- gitnexus:end -->
