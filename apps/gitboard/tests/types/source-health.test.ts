@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SOURCE_HEALTH_STATUSES, freshnessFromSourceHealth, makeSourceHealth } from "../../src/types/source-health.ts";
+import { makeSourceHealth as makeCoreSourceHealth } from "../../../../packages/core/src/state/index.ts";
 
 describe("source health", () => {
   it("defines the canonical dashboard health vocabulary", () => {
@@ -18,5 +19,9 @@ describe("source health", () => {
       checked_at: "2026-01-01T00:00:00.000Z",
       metadata: { remaining: 10 },
     });
+  });
+
+  it("keeps the app helper wired to the core source-health contract", () => {
+    expect(makeSourceHealth).toBe(makeCoreSourceHealth);
   });
 });
