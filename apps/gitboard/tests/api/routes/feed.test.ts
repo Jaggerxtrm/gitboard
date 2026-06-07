@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readFeedPage } from "../../../../../packages/core/src/state/index.ts";
 import { createFeedRouter } from "../../../src/api/routes/feed.ts";
 import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
 
@@ -54,6 +55,20 @@ describe("GET /api/feed", () => {
     const second = await (await app.fetch(new Request(`http://localhost/?limit=10&cursor=${encodeURIComponent(first.cursor.next ?? "")}`))).json() as { rows: Array<{ source: string }>; cursor: { next: string | null } };
     expect(second.rows.map((row) => row.source)).toEqual(["github", "materializer"]);
     expect(second.cursor.next).toBeNull();
+
+    db.close();
+  });
+
+  it("keeps the HTTP DTO identical to the core feed read model", async () => {
+    const db = createXtrmDatabase(dbPath);
+    seedFeedRows(db);
+    const app = createFeedRouter(db);
+
+    const response = await app.fetch(new Request("http://localhost/?limit=2"));
+    const body = await response.json();
+    const expected = readFeedPage(db, { limit: 2 });
+
+    expect(body).toEqual(expected);
 
     db.close();
   });
