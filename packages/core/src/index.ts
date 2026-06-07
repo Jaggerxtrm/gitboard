@@ -4,5 +4,6 @@
 export * from "./types/index.ts";
 export * from "./terminal/protocol.ts";
 export * from "./materializer/index.ts";
+export * from "./runtime/index.ts";
 export * from "./state/index.ts";
 export * from "./utils/index.ts";
