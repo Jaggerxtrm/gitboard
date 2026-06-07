@@ -21,6 +21,10 @@
       "import": "./dist/materializer/index.js",
       "types": "./dist/materializer/index.d.ts"
     },
+    "./state": {
+      "import": "./dist/state/index.js",
+      "types": "./dist/state/index.d.ts"
+    },
     "./utils/date": {
       "import": "./dist/utils/date.js",
       "types": "./dist/utils/date.d.ts"
