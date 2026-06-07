@@ -10,6 +10,25 @@ GitHub adapter state move to `packages/core`.
 The typed source of truth for this map is
 `packages/core/src/runtime/ownership.ts`.
 
+## Architecture Docs Gate
+
+Every `forge-6oae` runtime migration bead must update this document in the same
+branch as its code change. The update must record:
+
+- migrated surface;
+- new `packages/core` owner/export;
+- remaining `apps/gitboard` compatibility wrapper;
+- test/build/smoke gates that passed;
+- residual risk or reason the surface is not fully deprecated yet.
+
+When a bead changes read-model, bridge retirement, source-health, feed, graph,
+or specialist evidence semantics, it must also update
+`docs/architecture/daemon-read-model-contract.md`.
+
+Do not close a migration bead unless code and architecture docs agree. If a
+bead intentionally has no architecture-doc delta, its closure reason must say
+why.
+
 ## Ready Front
 
 The safe first implementation front is:
@@ -24,14 +43,22 @@ lifecycle, and GitHub adapter slices move.
 
 ## Runtime Surfaces
 
-| Surface | Current owner | Target export | Gate |
+| Surface | Current state | Core owner/export | Remaining app wrapper | Gate |
+|---|---|---|---|---|
+| `xtrm-state-schema` | Core-owned as of `forge-6oae.2` | `@xtrm/core/state/database` | `apps/gitboard/src/core/xtrm-store.ts` re-exports core schema API | Existing schema/materializer/API tests and direct Bun DB probe passed |
+| `runtime-host` | Core contract defined as of `forge-6oae.3` | `@xtrm/core/runtime` | `apps/gitboard/src/api/server.ts` still mounts routes and starts watchers | Host descriptor tests, route tests, typecheck, and local staging smoke passed |
+| `materializer-runtime` | Pending | `@xtrm/core/materializer` | App materializer index must remain a wrapper | App materializer index is a wrapper only |
+| `console-read-models` | Pending | `@xtrm/core/state` | App routes must remain HTTP DTO adapters | Routes are HTTP DTO adapters over core read-model services |
+| `source-lifecycle` | Pending | `@xtrm/core/runtime` | App supplies env/config only | Core owns discovery and health services; app supplies env/config |
+| `github-adapter` | Pending | `@xtrm/core/github` | App wires route/startup only | Core owns durable GitHub adapter state; app wires route/startup |
+
+## Completed Slices
+
+| Bead | Surface | Validation | Residual risk |
 |---|---|---|---|
-| `xtrm-state-schema` | `apps/gitboard` | `@xtrm/core/state` | App `xtrm-store.ts` delegates to core and owns no schema logic |
-| `runtime-host` | `apps/gitboard` | `@xtrm/core/runtime` | App server is compatibility wiring over a core host contract |
-| `materializer-runtime` | `apps/gitboard` | `@xtrm/core/materializer` | App materializer index is a wrapper only |
-| `console-read-models` | `apps/gitboard` | `@xtrm/core/state` | Routes are HTTP DTO adapters over core read-model services |
-| `source-lifecycle` | `apps/gitboard` | `@xtrm/core/runtime` | Core owns discovery and health services; app supplies env/config |
-| `github-adapter` | `apps/gitboard` | `@xtrm/core/github` | Core owns durable GitHub adapter state; app wires route/startup |
+| `forge-6oae.1` | Runtime ownership map | `packages/core` runtime ownership tests, lint/build, diff check, GitNexus LOW | Planning surface only; no runtime moved |
+| `forge-6oae.2` | `xtrm-state-schema` | Core package lint/build, app schema/materializer/API tests, direct Bun DB probe for 17 tables, diff check | `bun:sqlite` remains a Bun-only import, exposed through explicit `@xtrm/core/state/database` subpath |
+| `forge-6oae.3` | `runtime-host` | Core host tests, app route tests, gitboard typecheck, package build, staging smoke on port 3099 with zero materializer/request errors | `createApp` still owns route mounting and watcher startup until later slices |
 
 ## Non-Negotiables
 
