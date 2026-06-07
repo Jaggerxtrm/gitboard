@@ -11,6 +11,7 @@
     "start": "bun run src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke:deprecation": "bun run tests/smoke/deprecation-staging-smoke.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
