@@ -50,14 +50,14 @@ lifecycle, and GitHub adapter slices move.
 | `materializer-runtime` | Core-owned as of `forge-6oae.4` | `@xtrm/core/materializer` | `apps/gitboard/src/core/materializer/index.ts` injects gitboard logger and observability epoch hooks | Core materializer tests, app materializer tests, typecheck/build, and staging smoke passed |
 | `console-read-models` | Feed rollup core-owned as of `forge-6oae.5`; substrate, specialists, graph, and source-health query code still pending | `@xtrm/core/state` | `apps/gitboard/src/api/routes/feed.ts` is an HTTP adapter over `readFeedPage`; other app routes still own their current SQL/query wrappers | Feed route/API parity, core feed service tests, typecheck/build, and staging smoke passed |
 | `source-lifecycle` | Source-health vocabulary/helper core-owned as of `forge-6oae.13`; scanner/watcher runtime still app-owned | `@xtrm/core/runtime` and `@xtrm/core/state` | `apps/gitboard/src/types/source-health.ts` re-exports core source-health; `apps/gitboard` still owns `ProjectScanner`, `UnifiedScanner`, source routes, and watchers | Source-health parity tests, source/API tests, typecheck/build, and staging smoke passed |
-| `github-adapter` | Durable GitHub store core-owned as of `forge-6oae.7`; poller/discovery/readme still app-owned | `@xtrm/core/github` | `apps/gitboard/src/core/github-store.ts` re-exports the core store; app routes/startup still wire poller, discovery, README enrichment, websocket hints, and source-health updates | Core owns durable GitHub adapter state; app wires route/startup |
+| `github-adapter` | Durable GitHub store core-owned as of `forge-6oae.7`; legacy GitHub adapter DB factory core-owned as of `forge-6oae.8`; poller/discovery/readme still app-owned | `@xtrm/core/github` | `apps/gitboard/src/core/github-store.ts` and `apps/gitboard/src/core/store.ts` re-export core; app routes/startup still wire poller, discovery, README enrichment, websocket hints, and source-health updates | Core owns durable GitHub adapter state; app wires route/startup |
 
 ## GitHub Adapter Current State
 
 | Layer | Owner | Notes |
 |---|---|---|
-| Durable store functions and DTOs | `@xtrm/core/github` | Covers events, commits, repos, poll state, PRs, issues, releases, repo stats, contribution summaries, and commit-message enrichment helpers. |
-| Compatibility import path | `apps/gitboard/src/core/github-store.ts` | Pure re-export for existing route, poller, and tests. |
+| Durable store functions, DTOs, and legacy DB factory | `@xtrm/core/github` | Covers events, commits, repos, poll state, PRs, issues, releases, repo stats, contribution summaries, commit-message enrichment helpers, and the legacy GitHub/session/specialist-events schema used by GitHub route tests. |
+| Compatibility import paths | `apps/gitboard/src/core/github-store.ts`, `apps/gitboard/src/core/store.ts` | Pure re-exports for existing route, poller, and tests. |
 | Runtime poll loop | `apps/gitboard` | Still owns channel publish, source-health updates, logger entries, token discovery, and `SKIP_GITHUB_POLLER=1` startup behavior. |
 | HTTP route DTOs | `apps/gitboard` | `/api/github/*` stays mounted and keeps response shapes while reading through the store wrapper. |
 
@@ -75,6 +75,7 @@ lifecycle, and GitHub adapter slices move.
 | `forge-6oae.6` | `source-lifecycle` contracts and source-health vocabulary | GitNexus impact for `makeSourceHealth` reported CRITICAL; core source-health/source-lifecycle tests, app source-health/sources tests, typecheck/build, staging smoke, diff check, GitNexus detect-changes | App source-health helper and scanner/watcher implementations remain app-owned; moving `makeSourceHealth` itself requires a dedicated parity slice because it impacts graph, specialists, GitHub poller, and `createApp` |
 | `forge-6oae.13` | `source-health` compatibility wrapper | GitNexus CRITICAL impact acknowledged for `makeSourceHealth`; app helper-to-core parity test, source/API route tests, GitHub poller source-health tests, typecheck/build, staging smoke, diff check, GitNexus detect-changes | Scanner/watcher implementations and source route services remain app-owned; future slices can migrate consumers one cluster at a time |
 | `forge-6oae.7` | GitHub durable store | GitNexus impact for `GithubPoller` reported MEDIUM and store functions LOW; core export tests, app store wrapper tests, GitHub poller/route tests, package build/typecheck, local staging smoke, diff check, GitNexus detect-changes | Poller/discovery/readme stay app-owned because they carry websocket/source-health/logging/token behavior; next slice should extract those behind explicit core runtime hooks |
+| `forge-6oae.8` | GitHub legacy adapter DB factory compatibility shell | GitNexus impact for `createDatabase` reported MEDIUM; core GitHub store tests, app DB wrapper parity tests, GitHub store/poller/route tests, typecheck/build, local staging smoke, diff check, GitNexus detect-changes | `apps/gitboard` still owns poller/discovery/readme, HTTP route DTO assembly, terminal safety gates, and scanner watchers; shell thinning continues one owner surface at a time |
 
 ## Non-Negotiables
 

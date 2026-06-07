@@ -8,7 +8,7 @@ import {
   isTruncated,
   upsertRepo,
   type RepoStat,
-} from "../src/github/index.ts";
+} from "../src/github/store.ts";
 
 describe("core github store exports", () => {
   it("exports the durable GitHub store contract", () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Database } from "bun:sqlite";
 import { createDatabase, TABLES } from "../../src/core/store.ts";
+import { createDatabase as createCoreDatabase, TABLES as CORE_TABLES } from "../../../../packages/core/src/github/index.ts";
 import { mkdtemp, rmdir, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -16,6 +17,11 @@ describe("createDatabase", () => {
 
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("keeps the app database module as a compatibility re-export of core", () => {
+    expect(createDatabase).toBe(createCoreDatabase);
+    expect(TABLES).toBe(CORE_TABLES);
   });
 
   it("creates a database file at the given path", () => {
